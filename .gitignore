@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+# Persönliche Daten bleiben lokal
+data/
+inbox/
+sample_data/
+profiles.json
+*.db
+*.db-wal
+*.db-shm

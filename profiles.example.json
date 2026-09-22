@@ -1,0 +1,17 @@
+{
+  "profiles": [
+    {
+      "name": "Meine Bank (Beispiel)",
+      "columns": {
+        "date": "Buchungstag",
+        "amount": "Betrag",
+        "counterparty": "Empfänger",
+        "purpose": "Verwendungszweck",
+        "booking_text": "Art"
+      },
+      "date_format": "%d.%m.%Y",
+      "decimal": ",",
+      "account": "Girokonto Hausbank"
+    }
+  ]
+}

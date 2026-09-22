@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Finanzen</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232a78d6'/><path d='M8 22 L14 15 L18 19 L24 10' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--series-1)"/><path d="M8 22 L14 15 L18 19 L24 10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Finanzen</span>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-view="dashboard" aria-selected="true">Dashboard</button>
+      <button role="tab" data-view="transactions">Umsätze <span class="badge" id="uncat-badge" hidden></span></button>
+      <button role="tab" data-view="categories">Kategorien &amp; Regeln</button>
+      <button role="tab" data-view="import">Import</button>
+    </nav>
+    <div class="topbar-status" id="sync-status"></div>
+  </header>
+
+  <!-- Eine Filterzeile für alles, was sie betrifft (Dashboard + Umsätze) -->
+  <section class="filterbar" id="filterbar">
+    <div class="seg" id="period-presets" role="group" aria-label="Zeitraum">
+      <button data-period="month">Dieser Monat</button>
+      <button data-period="lastmonth">Letzter Monat</button>
+      <button data-period="3m">3 Monate</button>
+      <button data-period="12m">12 Monate</button>
+      <button data-period="ytd">Dieses Jahr</button>
+      <button data-period="lastyear">Letztes Jahr</button>
+      <button data-period="all">Alles</button>
+    </div>
+    <div class="range">
+      <input type="date" id="date-from" aria-label="Von">
+      <span>–</span>
+      <input type="date" id="date-to" aria-label="Bis">
+    </div>
+    <select id="account-filter" aria-label="Konto"><option value="">Alle Konten</option></select>
+  </section>
+
+  <main>
+    <!-- ============================ DASHBOARD ============================ -->
+    <section class="view" id="view-dashboard">
+      <div class="empty-state" id="dash-empty" hidden>
+        <h2>Noch keine Buchungen</h2>
+        <p>Importiere einen CSV-Export deiner Banking-App – per Drag &amp; Drop unter <a href="#import">Import</a>
+          oder indem du die Datei in den Inbox-Ordner legst.</p>
+        <p class="muted">Zum Ausprobieren: <code>python scripts/demo_daten.py inbox</code></p>
+      </div>
+      <div id="dash-content">
+        <div class="kpis" id="kpis"></div>
+        <div class="grid">
+          <article class="card span-8" data-card="monthly">
+            <header><div><h3>Einnahmen &amp; Ausgaben</h3><p>pro Monat · Klick auf einen Monat zeigt die Umsätze</p></div></header>
+            <div class="chart" style="height:320px"></div>
+          </article>
+          <article class="card span-4" data-card="categories">
+            <header><div><h3>Ausgaben nach Kategorie</h3><p>Anteil am Gesamtbetrag · Klick filtert Umsätze</p></div></header>
+            <div class="chart" style="height:320px"></div>
+          </article>
+          <article class="card span-12" data-card="sankey">
+            <header><div><h3>Geldfluss</h3><p>Woher das Geld kommt und wohin es geht</p></div></header>
+            <div class="chart" style="height:420px"></div>
+          </article>
+          <article class="card span-8" data-card="stacked">
+            <header><div><h3>Kategorien im Zeitverlauf</h3><p>Monatliche Ausgaben, die größten 7 Kategorien</p></div></header>
+            <div class="chart" style="height:340px"></div>
+          </article>
+          <article class="card span-4" data-card="budgets">
+            <header><div><h3>Budgets</h3><p id="budget-sub">Verbrauch im Zeitraum</p></div></header>
+            <div class="budgets"></div>
+          </article>
+          <article class="card span-6" data-card="balance">
+            <header><div><h3>Kontostand-Verlauf</h3><p>Kumulierte Buchungen seit dem ersten Import</p></div></header>
+            <div class="chart" style="height:300px"></div>
+          </article>
+          <article class="card span-6" data-card="partners">
+            <header><div><h3>Top-Empfänger</h3><p>Wohin am meisten Geld fließt</p></div></header>
+            <div class="chart" style="height:300px"></div>
+          </article>
+          <article class="card span-8" data-card="calendar">
+            <header><div><h3>Ausgaben-Kalender</h3><p>Summe der Ausgaben pro Tag</p></div></header>
+            <div class="chart" style="height:250px"></div>
+          </article>
+          <article class="card span-4" data-card="largest">
+            <header><div><h3>Größte Ausgaben</h3><p>Einzelbuchungen im Zeitraum</p></div></header>
+            <div class="largest"></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ UMSÄTZE ============================ -->
+    <section class="view" id="view-transactions" hidden>
+      <div class="toolbar">
+        <input type="search" id="tx-search" placeholder="Suchen: Empfänger, Verwendungszweck, Notiz …">
+        <select id="tx-category"><option value="">Alle Kategorien</option></select>
+        <select id="tx-direction">
+          <option value="">Ein- &amp; Ausgänge</option>
+          <option value="out">Nur Ausgaben</option>
+          <option value="in">Nur Einnahmen</option>
+        </select>
+        <select id="tx-sort">
+          <option value="date">Neueste zuerst</option>
+          <option value="amount">Größte Ausgaben</option>
+          <option value="-amount">Größte Einnahmen</option>
+          <option value="counterparty">Empfänger A–Z</option>
+        </select>
+      </div>
+      <div class="bulkbar" id="bulkbar" hidden>
+        <span id="bulk-count"></span>
+        <select id="bulk-category"></select>
+        <button class="primary" id="bulk-apply">Kategorie setzen</button>
+        <button id="bulk-clear">Auswahl aufheben</button>
+      </div>
+      <div class="tx-summary" id="tx-summary"></div>
+      <div class="table-wrap">
+        <table class="tx-table">
+          <thead><tr>
+            <th class="check"><input type="checkbox" id="tx-all" aria-label="Alle auswählen"></th>
+            <th>Datum</th><th>Empfänger / Verwendungszweck</th><th>Konto</th><th>Kategorie</th><th class="num">Betrag</th>
+          </tr></thead>
+          <tbody id="tx-body"></tbody>
+        </table>
+      </div>
+      <button class="more" id="tx-more" hidden>Weitere laden</button>
+    </section>
+
+    <!-- ======================= KATEGORIEN & REGELN ======================= -->
+    <section class="view" id="view-categories" hidden>
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-head">
+            <div><h2>Kategorien</h2><p class="muted">Frei definierbar, eine Ebene Unterkategorien. Budgets sind monatlich.</p></div>
+            <button class="primary" id="cat-new">+ Kategorie</button>
+          </div>
+          <div id="cat-list"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div><h2>Regeln</h2><p class="muted">Werden bei jedem Import angewendet – von oben nach unten, die erste passende gewinnt. Von Hand gesetzte Kategorien bleiben unangetastet.</p></div>
+            <div class="btn-row">
+              <button id="rules-apply">Neu anwenden</button>
+              <button class="primary" id="rule-new">+ Regel</button>
+            </div>
+          </div>
+          <div id="rule-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== IMPORT ============================== -->
+    <section class="view" id="view-import" hidden>
+      <div class="two-col">
+        <div class="panel">
+          <h2>Datei importieren</h2>
+          <label class="dropzone" id="dropzone">
+            <input type="file" id="file-input" accept=".csv,.txt,.tsv" multiple hidden>
+            <strong>CSV-Export hierher ziehen</strong>
+            <span>oder klicken zum Auswählen · DKB, ING, Sparkasse, Volksbank, comdirect, N26, Revolut u. v. m.</span>
+          </label>
+          <div id="import-results"></div>
+          <h2 class="mt">Automatischer Import</h2>
+          <p>Jede Datei im Inbox-Ordner wird automatisch importiert (Duplikate werden erkannt) und danach nach
+            <code>verarbeitet/</code> verschoben:</p>
+          <pre class="path" id="inbox-path">–</pre>
+          <p>Für den kontinuierlichen Export aus deiner Banking-App überwacht das PowerShell-Skript deinen
+            Download-Ordner und schickt neue Exporte direkt hierher:</p>
+          <pre class="path">.\scripts\Watch-BankExports.ps1 -Folder "$HOME\Downloads"</pre>
+          <p class="muted">Dauerhaft im Hintergrund (bei jeder Anmeldung): <code>.\scripts\Install-AutoStart.ps1</code> – Details im README.</p>
+          <h2 class="mt">Export</h2>
+          <p><a class="button" href="/api/export.csv">Alle Buchungen als CSV (Excel)</a></p>
+        </div>
+        <div class="panel">
+          <h2>Import-Verlauf</h2>
+          <div id="import-history"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Dialoge -->
+  <dialog id="cat-dialog">
+    <form method="dialog" id="cat-form">
+      <h2 id="cat-dialog-title">Kategorie</h2>
+      <label>Name <input name="name" required maxlength="60"></label>
+      <label>Oberkategorie <select name="parent_id"></select></label>
+      <label>Art
+        <select name="kind">
+          <option value="expense">Ausgabe</option>
+          <option value="income">Einnahme</option>
+          <option value="transfer">Umbuchung (zählt weder als Einnahme noch als Ausgabe)</option>
+        </select>
+      </label>
+      <fieldset class="swatches"><legend>Farbe</legend><div id="swatches"></div></fieldset>
+      <label>Monatsbudget in € <input name="budget" type="number" min="0" step="1" placeholder="optional"></label>
+      <p class="form-error" id="cat-error"></p>
+      <div class="dialog-actions">
+        <button type="button" class="danger" id="cat-delete">Löschen</button>
+        <span class="spacer"></span>
+        <button value="cancel" formnovalidate>Abbrechen</button>
+        <button class="primary" value="save">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="rule-dialog">
+    <form method="dialog" id="rule-form">
+      <h2 id="rule-dialog-title">Regel</h2>
+      <div class="rule-sentence">
+        <label>Wenn <select name="field">
+          <option value="any">Empfänger, Zweck oder Buchungstext</option>
+          <option value="counterparty">Empfänger / Auftraggeber</option>
+          <option value="purpose">Verwendungszweck</option>
+          <option value="booking_text">Buchungstext</option>
+          <option value="iban">IBAN</option>
+          <option value="account">Konto</option>
+        </select></label>
+        <label><select name="op">
+          <option value="contains">enthält</option>
+          <option value="equals">genau gleich ist</option>
+          <option value="startswith">beginnt mit</option>
+          <option value="regex">passt auf regulären Ausdruck</option>
+        </select></label>
+        <label class="grow"><input name="pattern" required placeholder="z. B. REWE"></label>
+      </div>
+      <div class="rule-sentence">
+        <label>und es sich um <select name="direction">
+          <option value="any">Ein- oder Ausgänge</option>
+          <option value="out">Ausgaben</option>
+          <option value="in">Einnahmen</option>
+        </select></label>
+        <label>ab <input name="min_amount" type="number" step="0.01" min="0" placeholder="– €"></label>
+        <label>bis <input name="max_amount" type="number" step="0.01" min="0" placeholder="– €"></label>
+      </div>
+      <label>handelt, dann Kategorie <select name="category_id" required></select></label>
+      <label>Priorität <input name="priority" type="number" value="100"> <span class="muted">kleiner = wird zuerst geprüft</span></label>
+      <label class="inline"><input type="checkbox" name="enabled" checked> aktiv</label>
+      <div class="preview" id="rule-preview"></div>
+      <p class="form-error" id="rule-error"></p>
+      <div class="dialog-actions">
+        <button type="button" class="danger" id="rule-delete">Löschen</button>
+        <span class="spacer"></span>
+        <button value="cancel" formnovalidate>Abbrechen</button>
+        <button class="primary" value="save">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script src="vendor/echarts.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
