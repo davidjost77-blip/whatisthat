@@ -211,7 +211,9 @@ def dashboard(conn, date_from=None, date_to=None, accounts=None):
             "income": income,
             "expense": expense,
             "net": income - expense,
-            "savings_rate": round((income - expense) / income * 100, 1) if income > 0 else None,
+            # Unter -100 % ist die Quote nicht aussagekräftig (meist fehlen die Einnahmen im Export)
+            "savings_rate": round((income - expense) / income * 100, 1)
+            if income > 0 and income - expense >= -income else None,
             "transfer": transfer,
             "avg_monthly_expense": round(expense / len(months)),
             "count": len(txs),

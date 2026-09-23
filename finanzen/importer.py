@@ -31,9 +31,9 @@ ALIASES = {
     "counterparty": ["name zahlungsbeteiligter", "beguenstigter/zahlungspflichtiger", "begünstigter/zahlungspflichtiger",
                      "auftraggeber/empfänger", "auftraggeber / begünstigter", "auftraggeber/begünstigter",
                      "empfänger/auftraggeber", "partner name", "payee", "name", "description", "gegenkonto name",
-                     "zahlungsbeteiligter"],
+                     "zahlungsbeteiligter", "beschreibung", "händler", "haendler", "merchant"],
     "purpose": ["verwendungszweck", "payment reference", "vorgang/verwendungszweck", "buchungsdetails",
-                "reference", "beschreibung", "text"],
+                "reference", "text"],
     "booking_text": ["buchungstext", "umsatztyp", "umsatzart", "transaction type", "type", "vorgang", "buchungsart"],
     "iban": ["iban zahlungsbeteiligter", "kontonummer/iban", "iban", "partner iban", "gegenkonto iban",
              "account number", "gegen-iban"],
@@ -45,6 +45,12 @@ SKIP_STATUS = {"vorgemerkt", "umsatz vorgemerkt", "pending", "reverted", "declin
                "abgelehnt"}
 
 DATE_FORMATS = ["%d.%m.%Y", "%d.%m.%y", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d", "%m/%d/%Y"]
+
+# Ein Stück Karten-/Kontonummer mit mindestens 4 Ziffern am Ende (z. B. "4930 •••• •••• 3767")
+CARD_RE = re.compile(r"(\d{4})\s*$")
+# PayPal-Lastschriften: der eigentliche Händler steht im Verwendungszweck
+PAYPAL_RE = re.compile(r"ihr einkauf bei\s+(.+?)\s*(?:,|$)", re.IGNORECASE)
+ACCOUNT_LABELS = {"karte", "kreditkarte", "konto", "kontoname", "account", "kontobezeichnung", "girokonto"}
 
 IBAN_RE = re.compile(r"\b([A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){3,7}(?:\s?[A-Z0-9]{1,4})?)\b")
 
@@ -181,6 +187,36 @@ def _cell(row, mapping, field):
     return re.sub(r"\s+", " ", row[idx]).strip()
 
 
+def account_from_preamble(rows):
+    """Konto aus Metadaten oberhalb der Kopfzeile.
+
+    DKB/ING: ``"Girokonto";"DE12 …"`` -> IBAN. DKB-Kreditkarte: ``"Karte";"Visa Kreditkarte";"4930 •••• 3767"``
+    -> "Visa Kreditkarte ···3767". Wichtig ist, dass der Name bei jedem Export gleich bleibt,
+    sonst greift die Duplikaterkennung nicht.
+    """
+    for row in rows:
+        m = IBAN_RE.search(" ".join(row))
+        if m:
+            return m.group(1).replace(" ", "")
+    for row in rows:
+        cells = [c.strip() for c in row if c.strip()]
+        if len(cells) >= 2 and _norm(cells[0]).rstrip(":") in ACCOUNT_LABELS:
+            m = CARD_RE.search(cells[-1])
+            name = cells[1] if len(cells) > 2 or not m else cells[0]
+            return f"{name} ···{m.group(1)}" if m else cells[1]
+    return None
+
+
+def account_from_filename(filename):
+    """Stabiler Kontoname aus dem Dateinamen: Datumsangaben und Upload-Präfixe entfernen."""
+    stem = Path(filename).stem
+    stem = re.sub(r"^[0-9a-f]{8}-(?=\d)", "", stem)  # Upload-Präfix
+    stem = re.sub(r"\d{1,4}[-._]\d{1,2}[-._]\d{2,4}", "", stem)  # Datumsangaben
+    stem = re.sub(r"(?i)umsatzliste|umsatzanzeige|umsaetze|umsätze|export|transactions", "", stem)
+    stem = re.sub(r"[_\-\s]+", " ", stem).strip()
+    return stem or "Konto"
+
+
 def load_profiles(path):
     if not path or not Path(path).exists():
         return []
@@ -199,14 +235,8 @@ def parse_file(data: bytes, filename="upload.csv", profiles=(), account=None):
     rows = list(csv.reader(io.StringIO(text), delimiter=delimiter))
     header_idx, mapping, profile = find_header(rows, profiles)
 
-    # Konto aus Metadaten oberhalb der Kopfzeile (z. B. DKB/ING: "IBAN";"DE12 ...")
-    preamble_account = None
-    for row in rows[:header_idx]:
-        m = IBAN_RE.search(" ".join(row))
-        if m:
-            preamble_account = m.group(1).replace(" ", "")
-            break
-    default_account = account or (profile or {}).get("account") or preamble_account or Path(filename).stem
+    default_account = (account or (profile or {}).get("account") or account_from_preamble(rows[:header_idx])
+                       or account_from_filename(filename))
 
     data_rows = [r for r in rows[header_idx + 1:] if any(c.strip() for c in r)]
     amount_cells = [_cell(r, mapping, f) for r in data_rows for f in ("amount", "debit", "credit")]
@@ -238,14 +268,23 @@ def parse_file(data: bytes, filename="upload.csv", profiles=(), account=None):
             # DKB: Empfänger bei Ausgaben, Zahlungspflichtiger bei Einnahmen
             payee, payer = _cell(row, mapping, "payee"), _cell(row, mapping, "payer")
             counterparty = (payee or payer) if amount < 0 else (payer or payee)
+        purpose = _cell(row, mapping, "purpose")
+        booking_text = _cell(row, mapping, "booking_text")
+        if "paypal" in counterparty.lower():
+            m = PAYPAL_RE.search(purpose)
+            if m:
+                counterparty = m.group(1).strip()
+                booking_text = f"{booking_text} · PayPal".strip(" ·")
+        if not counterparty:
+            counterparty = purpose[:80]
 
         transactions.append({
             "date": d,
             "amount": amount,
             "currency": _cell(row, mapping, "currency") or "EUR",
             "counterparty": counterparty,
-            "purpose": _cell(row, mapping, "purpose"),
-            "booking_text": _cell(row, mapping, "booking_text"),
+            "purpose": purpose,
+            "booking_text": booking_text,
             "iban": _cell(row, mapping, "iban").replace(" ", ""),
             "account": _cell(row, mapping, "account") or default_account,
         })

@@ -47,6 +47,21 @@ BANK_SAMPLES = {
         "CARD_PAYMENT,Current,2024-03-15 10:11:12,2024-03-16 08:00:00,Amazon,-1234.50,0.00,EUR,COMPLETED,100.00\n"
         "CARD_PAYMENT,Current,2024-03-17 10:11:12,,Spotify,-9.99,0.00,EUR,PENDING,90.00\n"
     ).encode("utf-8"),
+    "dkb_kreditkarte": (
+        '"Karte";"Visa Kreditkarte";"4930 •••• •••• 1234"\n""\n"Saldo vom 23.09.2026:";"-0 EUR"\n""\n'
+        '"Belegdatum";"Wertstellung";"Status";"Beschreibung";"Umsatztyp";"Betrag (€)";"Fremdwährungsbetrag"\n'
+        '"22.09.26";"23.09.26";"Gebucht";"Ausgleich Kreditkarte gem";"Lastschrift";"77,23";""\n'
+        '"22.09.26";"22.09.26";"Gebucht";"Kartenpreis";"Entgelt";"-2,49";""\n'
+        '"17.09.26";"18.09.26";"Gebucht";"UBER   *EATS";"Onlinezahlung";"-24,36";""\n'
+        '"16.09.26";"17.09.26";"Gebucht";"UBER* TRIP";"Onlinezahlung";"-8,91";"-189,91 MX$"\n'
+    ).encode("utf-8-sig"),
+    "dkb_paypal": (
+        '"Girokonto";"DE02120300000000202051"\n\n'
+        '"Buchungsdatum";"Wertstellung";"Status";"Zahlungspflichtige*r";"Zahlungsempfänger*in";"Verwendungszweck";'
+        '"Umsatztyp";"IBAN";"Betrag (€)";"Gläubiger-ID";"Mandatsreferenz";"Kundenreferenz"\n'
+        '"22.09.26";"22.09.26";"Gebucht";"Max Mustermann";"PayPal Europe S.a.r.l. et Cie S.C.A";'
+        '"1053196823531/. Wolt, Ihr Einkauf bei Wolt";"Ausgang";"LU89";"-16,24";"";"";""\n'
+    ).encode("utf-8-sig"),
     "soll_haben": (
         "Datum;Empfänger;Verwendungszweck;Soll;Haben\n"
         "15.03.2024;Vermieter;Miete;800,00;\n"
@@ -100,6 +115,23 @@ class ParsingTests(unittest.TestCase):
         self.assertEqual(txs[0]["date"], "2024-03-16")
         self.assertEqual(txs[0]["amount"], -123450)
 
+    def test_dkb_credit_card(self):
+        txs, info = importer.parse_file(BANK_SAMPLES["dkb_kreditkarte"], "b428df79-23-09-2026_Umsatzliste_Visa.csv")
+        # Konto aus der Kopfzeile, nicht aus dem (täglich wechselnden) Dateinamen
+        self.assertEqual(info["account"], "Visa Kreditkarte ···1234")
+        self.assertEqual([t["counterparty"] for t in txs][:2], ["Ausgleich Kreditkarte gem", "Kartenpreis"])
+        again, _ = importer.parse_file(BANK_SAMPLES["dkb_kreditkarte"], "24-09-2026_Umsatzliste_Visa.csv")
+        self.assertEqual([t["hash"] for t in txs], [t["hash"] for t in again])
+
+    def test_paypal_merchant(self):
+        txs, _ = importer.parse_file(BANK_SAMPLES["dkb_paypal"], "giro.csv")
+        self.assertEqual(txs[0]["counterparty"], "Wolt")
+        self.assertIn("PayPal", txs[0]["booking_text"])
+
+    def test_account_from_filename(self):
+        self.assertEqual(importer.account_from_filename("faa05d10-23-09-2026_Umsatzliste_Visa_Karte_3767.csv"),
+                         "Visa Karte 3767")
+
     def test_debit_credit_columns(self):
         txs, _ = importer.parse_file(BANK_SAMPLES["soll_haben"], "konto.csv")
         self.assertEqual([t["amount"] for t in txs], [-80000, 200000])
@@ -143,6 +175,16 @@ class DatabaseTests(unittest.TestCase):
         rows = {r["counterparty"]: r["category_id"] for r in self.conn.execute("SELECT * FROM transactions")}
         self.assertEqual(rows["REWE Markt GmbH"], self.cat("Supermarkt"))
         self.assertEqual(rows["ACME GmbH"], self.cat("Gehalt"))
+
+    def test_default_rules_for_cards(self):
+        ingest.import_bytes(self.conn, BANK_SAMPLES["dkb_kreditkarte"], "k.csv")
+        ingest.import_bytes(self.conn, BANK_SAMPLES["dkb_paypal"], "g.csv")
+        got = {r["counterparty"]: r["category_id"] for r in self.conn.execute("SELECT * FROM transactions")}
+        self.assertEqual(got["Ausgleich Kreditkarte gem"], self.cat("Eigene Konten"))  # Umbuchung, keine Einnahme
+        self.assertEqual(got["Kartenpreis"], self.cat("Gebühren"))
+        self.assertEqual(got["UBER *EATS"], self.cat("Lieferdienste"))
+        self.assertEqual(got["UBER* TRIP"], self.cat("Taxi & Sharing"))
+        self.assertEqual(got["Wolt"], self.cat("Lieferdienste"))
 
     def test_manual_category_survives_rules(self):
         ingest.import_bytes(self.conn, BANK_SAMPLES["dkb"], "a.csv")

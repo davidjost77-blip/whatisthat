@@ -322,8 +322,10 @@ function renderKpis(d, t) {
     { label: "Überschuss", hero: true, value: money0(k.net), delta: delta(k.net, prev.net, true), spark: m.map((x) => x.net), color: k.net >= 0 ? t.good : css("--critical") },
     {
       label: "Sparquote", value: k.savings_rate == null ? "–" : `${pct.format(k.savings_rate)} %`,
-      delta: `<span>Ø Ausgaben ${money0(k.avg_monthly_expense)} / Monat</span>`,
-      spark: m.map((x) => (x.income ? (x.net / x.income) * 100 : 0)), color: t.series[2],
+      delta: k.savings_rate == null && k.expense > k.income
+        ? `<span title="Die Ausgaben übersteigen die Einnahmen um mehr als das Doppelte – meist fehlt der Gehaltseingang im Export.">Zu wenig Einnahmen im Zeitraum</span>`
+        : `<span>Ø Ausgaben ${money0(k.avg_monthly_expense)} / Monat</span>`,
+      spark: m.map((x) => (x.income ? Math.max((x.net / x.income) * 100, -100) : 0)), color: t.series[2],
     },
   ];
   $("#kpis").innerHTML = tiles.map((x) => `
@@ -629,7 +631,7 @@ function renderTransactions() {
       <td class="check"><input type="checkbox" ${selected.has(x.id) ? "checked" : ""} aria-label="Auswählen"></td>
       <td class="date">${dateDe(x.date)}</td>
       <td><div class="who">${esc(x.counterparty || "–")}</div>
-        <div class="why" title="${esc(x.purpose)}">${esc(x.purpose)}${x.booking_text ? ` · ${esc(x.booking_text)}` : ""}</div>
+        <div class="why" title="${esc(x.purpose)}">${[x.purpose, x.booking_text].filter(Boolean).map(esc).join(" · ")}</div>
         ${x.note ? `<div class="why"><i>Notiz:</i> ${esc(x.note)}</div>` : ""}</td>
       <td class="acct">${esc(x.account)}</td>
       <td><select class="${x.category_id ? "" : "uncat"}" aria-label="Kategorie">
