@@ -603,6 +603,7 @@ function goToTransactions({ from, to, category = "", direction = "", q = "" }) {
 
 let txSeq = 0;
 async function loadTransactions(append = false) {
+  if (!append) loadQuick();
   const seq = ++txSeq;
   const tx = state.tx;
   if (!append) { tx.offset = 0; tx.selected.clear(); }
@@ -661,6 +662,35 @@ async function setTxCategory(id, categoryId) {
       action: { label: `Regel für „${tx.counterparty.slice(0, 24)}“`, run: () => openRuleDialog(null, { field: "counterparty", op: "contains", pattern: tx.counterparty, category_id: categoryId, direction: tx.amount < 0 ? "out" : "in" }) },
     });
   }
+}
+
+// ------------------------------------------------------------------ Schnell zuordnen
+let quickLimit = 15;
+let quickGroups = [];
+async function loadQuick() {
+  const data = await api("GET", `/api/suggestions?limit=${quickLimit}`).catch(() => null);
+  if (!data) return;
+  quickGroups = data.groups;
+  $("#quick").hidden = !data.total;
+  $("#quick-title").textContent = `Schnell zuordnen · ${data.total.toLocaleString("de-DE")} Buchungen ohne Kategorie`;
+  $("#quick-more").hidden = data.groups.length < quickLimit;
+  $("#quick-body").innerHTML = data.groups.map((g, i) => `
+    <tr data-i="${i}">
+      <td><b>${esc(g.name)}</b>${g.variants.length > 1 ? `<div class="variants">auch: ${esc(g.variants.slice(1).join(" · "))}</div>` : ""}</td>
+      <td class="num">${g.count}</td>
+      <td class="num ${g.sum > 0 ? "pos" : ""}">${money(g.sum)}</td>
+      <td><select aria-label="Kategorie für ${esc(g.name)}"><option value="">– wählen –</option>${categoryOptions()}</select></td>
+      <td><button class="ghost" data-show="${i}">Ansehen</button></td>
+    </tr>`).join("");
+}
+
+async function assignGroup(i, categoryId) {
+  const g = quickGroups[i];
+  const res = await api("POST", "/api/rules", {
+    category_id: categoryId, field: "counterparty", op: g.op, pattern: g.pattern, direction: g.direction, priority: 90,
+  });
+  toast(`Regel angelegt: „${g.name}“ → ${catName(categoryId)} · ${res.changed} Buchungen zugeordnet`);
+  await loadTransactions();
 }
 
 // ------------------------------------------------------------------ Kategorien & Regeln
@@ -740,7 +770,8 @@ function openCategoryDialog(cat) {
     try {
       await api(cat ? "PUT" : "POST", cat ? `/api/categories/${cat.id}` : "/api/categories", body);
       $("#cat-dialog").close();
-      renderCategoriesView();
+      if (state.view === "categories") renderCategoriesView();
+      else { await loadCategories(); refreshCurrent(); }
     } catch (err) {
       $("#cat-error").textContent = err.message;
     }
@@ -879,6 +910,21 @@ function wire() {
       renderTransactions();
     };
   });
+  $("#quick-body").addEventListener("change", async (e) => {
+    if (e.target.tagName !== "SELECT" || !e.target.value) return;
+    const tr = e.target.closest("tr");
+    tr.classList.add("done");
+    try { await assignGroup(+tr.dataset.i, +e.target.value); } catch (err) { tr.classList.remove("done"); toast(err.message, { error: true }); }
+  });
+  $("#quick-body").addEventListener("click", (e) => {
+    const i = e.target.dataset.show;
+    if (i === undefined) return;
+    $("#tx-category").value = "0";
+    $("#tx-search").value = quickGroups[+i].variants[0];
+    loadTransactions();
+  });
+  $("#quick-more").onclick = () => { quickLimit += 30; loadQuick(); };
+  $("#quick-newcat").onclick = () => openCategoryDialog(null);
   $("#tx-all").onchange = (e) => {
     state.tx.selected = new Set(e.target.checked ? state.tx.items.map((x) => x.id) : []);
     renderTransactions();

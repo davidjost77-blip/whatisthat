@@ -186,6 +186,35 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(got["UBER* TRIP"], self.cat("Taxi & Sharing"))
         self.assertEqual(got["Wolt"], self.cat("Lieferdienste"))
 
+    def test_own_account_and_salary(self):
+        data = ('"Girokonto";"DE02120300000000202051"\n\n'
+                '"Buchungsdatum";"Wertstellung";"Status";"Zahlungspflichtige*r";"Zahlungsempfänger*in";'
+                '"Verwendungszweck";"Umsatztyp";"IBAN";"Betrag (€)"\n'
+                '"01.09.26";"01.09.26";"Gebucht";"Max Mustermann    Hauptstr 1";"Erika Muster";"Geschenk";"Ausgang";"";"-20"\n'
+                '"02.09.26";"02.09.26";"Gebucht";"Max Mustermann";"Max Peter Mustermann";"";"Ausgang";"";"-200"\n'
+                '"03.09.26";"03.09.26";"Gebucht";"ISSUER";"REWE";"Karte";"Ausgang";"";"-5"\n'
+                '"04.09.26";"04.09.26";"Gebucht";"Max Mustermann";"Vermieter";"Kaution";"Ausgang";"";"-9"\n'
+                '"25.09.26";"25.09.26";"Gebucht";"ACME Inc";"Max Mustermann";"SALARY ACME NET PAY";"Eingang";"";"3000"\n'
+                ).encode("utf-8")
+        ingest.import_bytes(self.conn, data, "g.csv")
+        got = {r["counterparty"]: r["category_id"] for r in self.conn.execute("SELECT * FROM transactions")}
+        self.assertEqual(got["Max Peter Mustermann"], self.cat("Eigene Konten"))
+        self.assertIsNone(got["Erika Muster"])
+        self.assertEqual(got["ACME Inc"], self.cat("Gehalt"))
+
+    def test_uncategorized_groups(self):
+        data = ("Datum;Empfänger;Betrag\n01.03.2024;Karl August GmbH;-10,00\n"
+                "02.03.2024;Karl.August.GmbH/Nuernberg;-5,00\n03.03.2024;Kiosk;-1,00\n").encode()
+        ingest.import_bytes(self.conn, data, "x.csv")
+        groups = analytics.uncategorized_groups(self.conn)["groups"]
+        karl = next(g for g in groups if g["name"].startswith("Karl"))
+        self.assertEqual(karl["count"], 2)
+        rule = rules.CompiledRule({"id": 0, "category_id": 1, "field": "counterparty", "op": karl["op"],
+                                   "pattern": karl["pattern"], "direction": "any", "min_amount": None,
+                                   "max_amount": None})
+        self.assertTrue(all(rule.matches({"amount": -1, "counterparty": v, "purpose": "", "booking_text": ""})
+                            for v in karl["variants"]))
+
     def test_manual_category_survives_rules(self):
         ingest.import_bytes(self.conn, BANK_SAMPLES["dkb"], "a.csv")
         self.conn.execute("UPDATE transactions SET category_id = ?, manual = 1 WHERE counterparty = 'REWE Markt GmbH'",

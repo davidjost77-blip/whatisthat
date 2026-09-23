@@ -67,14 +67,15 @@ NEUTRAL = "#898781"  # Umbuchungen / "Sonstige" in Diagrammen
 # (Name, Art, [Unterkategorien], [(Unterkategorie|None, Feld, Muster, Richtung[, Priorität])])
 DEFAULT_CATEGORIES = [
     ("Einkommen", "income", ["Gehalt", "Erstattungen", "Sonstige Einnahmen"], [
-        ("Gehalt", "any", r"gehalt|lohn|bezüge|bezuege", "in"),
+        ("Gehalt", "any", r"gehalt|lohn|bezüge|bezuege|salary|payroll|net pay", "in"),
         ("Sonstige Einnahmen", "any", r"zinsen|dividende|ausschüttung", "in"),
-        ("Erstattungen", "any", r"erstattung|rückzahlung|rueckzahlung|gutschrift", "in"),
+        ("Erstattungen", "any", r"erstattung|rückzahlung|rueckzahlung|gutschrift|finanzamt|krankenkasse|ersatzkasse", "in"),
     ]),
-    ("Wohnen", "expense", ["Miete", "Energie", "Internet & Telefon"], [
-        ("Miete", "purpose", r"miete|hausgeld", "out"),
+    ("Wohnen", "expense", ["Miete", "Energie", "Internet & Telefon", "Rundfunkbeitrag"], [
+        ("Miete", "any", r"miete|hausgeld|hausverwaltung|wohnungsbau|wohnungen|wohnbau|immobilien", "out"),
         ("Energie", "any", r"stadtwerke|swm versorgung|vattenfall|e\.on|eon energie|enbw|strom", "out"),
         ("Internet & Telefon", "any", r"telekom|vodafone|\bo2\b|telefonica|1&1|congstar", "out"),
+        ("Rundfunkbeitrag", "any", r"rundfunk|ard zdf|beitragsservice", "out"),
     ]),
     ("Lebensmittel", "expense", ["Supermarkt", "Bäcker"], [
         ("Supermarkt", "counterparty", r"rewe|edeka|lidl|aldi|netto|penny|kaufland|denns|alnatura|tegut", "out"),
@@ -83,45 +84,49 @@ DEFAULT_CATEGORIES = [
     ("Mobilität", "expense", ["Tanken", "ÖPNV & Bahn", "Taxi & Sharing", "Auto"], [
         ("Tanken", "counterparty", r"shell|aral|esso|totalenergies|jet tankstelle|tankstelle", "out"),
         ("ÖPNV & Bahn", "any", r"db vertrieb|deutsche bahn|bvg|mvg(?! ?rad)|mvv|muench\.vt|hvv|vgn|deutschlandticket|"
-                               r"flixbus|logpay", "out"),
-        ("Taxi & Sharing", "counterparty", r"\buber\b|\bbolt\b|free ?now|\bvoi\b|\btier\b|\blime\b|mvg ?rad|"
-                                          r"nextbike|ecobici|share now|miles mobility|sixt share", "out"),
+                               r"flixbus|logpay|\böbb\b|\bobb\b|trenitalia|\bsbb\b", "out"),
+        ("Taxi & Sharing", "counterparty", r"\buber\b|\bbolt\b|free ?now|\bvoi\b|\btier\b|\blime\b|limebike|mvg ?rad|"
+                                          r"nextbike|ecobici|share now|miles mobility|sixt share|\bdott\b", "out"),
         ("Auto", "any", r"kfz|werkstatt|\batu\b|parkhaus|parken", "out"),
     ]),
     ("Freizeit", "expense", ["Restaurants & Cafés", "Lieferdienste", "Abos & Streaming", "Gaming & Apps", "Sport",
                              "Reisen"], [
         # vor "Taxi & Sharing", damit Uber Eats nicht als Fahrt zählt
         ("Lieferdienste", "counterparty", r"wolt|uber\s*\*?\s*eats|lieferando|deliveroo|flink|rappi|foodnow|"
-                                         r"hellofresh|knuspr|getir", "out", 60),
+                                         r"hellofresh|knuspr|getir|takeaway\.com", "out", 60),
         ("Restaurants & Cafés", "counterparty", r"restaurant|\brest\b|pizzeria|café|cafe|starbucks|mcdonalds|burger", "out"),
         ("Abos & Streaming", "counterparty", r"netflix|spotify|disney|dazn|apple\.com|icloud|audible|youtube|"
                                             r"google ?\*?\s*(google )?one|claude|anthropic|openai|chatgpt|strava|"
-                                            r"crunchyroll|skillshare|amazon prime", "out"),
+                                            r"crunchyroll|skillshare|amazon prime|süddeutsche|suddeutsche|spiegel|zeit online|patreon", "out"),
         ("Gaming & Apps", "counterparty", r"playstation|steam|nintendo|xbox|google ?\*?\s*(google )?play|"
-                                         r"app store|epic games", "out"),
-        ("Sport", "counterparty", r"fitness|urban sports|mcfit|sportverein", "out"),
+                                         r"app store|epic games|microsoft", "out"),
+        ("Sport", "counterparty", r"fitness|urban sports|mcfit|sportverein|decathlon|intersport|sport ?2000|fitmart|zwift", "out"),
         ("Reisen", "counterparty", r"booking\.com|airbnb|lufthansa|ryanair|eurowings|easyjet|condor|kiwi\.com|"
                                   r"volaris|hotel", "out"),
     ]),
-    ("Shopping", "expense", ["Online", "Kleidung", "Drogerie"], [
-        ("Online", "counterparty", r"amazon|ebay|\botto\b|saturn|mediamarkt|ikea|kaufland marketplace", "out"),
+    ("Shopping", "expense", ["Online", "Kleidung", "Drogerie", "Haushalt & Baumarkt"], [
+        ("Online", "counterparty", r"amazon|ebay|\botto\b|saturn|mediamarkt|kaufland marketplace|thomann|xiaomi", "out"),
+        ("Haushalt & Baumarkt", "counterparty", r"ikea|hagebau|\bobi\b|bauhaus|hornbach|toom|globus baumarkt", "out"),
         ("Kleidung", "counterparty", r"zalando|h&m|zara|c&a|about you", "out"),
-        ("Drogerie", "counterparty", r"dm-drogerie|dm drogerie|rossmann", "out"),
+        ("Drogerie", "counterparty", r"dm-drogerie|dm drogerie|rossmann|friseur", "out"),
     ]),
     ("Gesundheit & Versicherungen", "expense", ["Gesundheit", "Versicherungen"], [
         ("Gesundheit", "counterparty", r"apotheke|arzt|zahnarzt|praxis", "out"),
         ("Versicherungen", "any", r"versicherung|allianz|\bhuk\b|\bergo\b|\baxa\b|debeka|signal iduna", "out"),
     ]),
-    ("Sonstiges", "expense", ["Bargeld", "Gebühren", "Spenden"], [
+    ("Sonstiges", "expense", ["Bargeld", "Gebühren", "Kredite & Raten", "Spenden"], [
         ("Bargeld", "any", r"bargeld|geldautomat|\batm\b|auszahlung", "out"),
+        # Abhebungen mit der Debitkarte erscheinen mit dem Namen der Automaten-Bank
+        ("Bargeld", "counterparty", r"^commerzbank$|oldenburgische landesbank|\bolb\b|^deutsche bank$|^postbank$", "out"),
         ("Gebühren", "any", r"entgelt|gebühr|gebuehr|kontoführung|kontofuehrung|kartenpreis", "out"),
+        ("Kredite & Raten", "any", r"consors finanz|ratenkredit|darlehen|ihre rate", "out"),
         ("Spenden", "any", r"spende", "out"),
     ]),
     ("Sparen & Umbuchungen", "transfer", ["Sparen", "Eigene Konten"], [
         # Umbuchungen zuerst prüfen, damit z. B. der Kreditkartenausgleich nicht als Einnahme zählt
         ("Sparen", "any", r"sparplan|depot|tagesgeld|trade republic|scalable", "out", 50),
         ("Eigene Konten", "any", r"umbuchung|übertrag|uebertrag|ausgleich kreditkarte|kreditkartenabrechnung|"
-                                 r"^einzahlung$", "any", 50),
+                                 r"^einzahlung$|eigenes konto", "any", 50),
     ]),
 ]
 

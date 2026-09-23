@@ -47,6 +47,7 @@ class App:
             ("GET", r"/api/status", self.status),
             ("GET", r"/api/dashboard", self.dashboard),
             ("GET", r"/api/transactions", self.list_transactions),
+            ("GET", r"/api/suggestions", self.suggestions),
             ("PATCH", r"/api/transactions/(\d+)", self.update_transaction),
             ("POST", r"/api/transactions/categorize", self.bulk_categorize),
             ("GET", r"/api/categories", self.list_categories),
@@ -88,6 +89,9 @@ class App:
     def dashboard(self, conn, req):
         q = req.query
         return analytics.dashboard(conn, q.get("from", [None])[0], q.get("to", [None])[0], q.get("account"))
+
+    def suggestions(self, conn, req):
+        return analytics.uncategorized_groups(conn, int(req.query.get("limit", [30])[0]))
 
     # ------------------------------------------------------------ Buchungen
     def list_transactions(self, conn, req):

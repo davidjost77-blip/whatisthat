@@ -95,6 +95,20 @@
 
     <!-- ============================ UMSÄTZE ============================ -->
     <section class="view" id="view-transactions" hidden>
+      <details class="quick" id="quick" open hidden>
+        <summary><span id="quick-title">Schnell zuordnen</span>
+          <span class="muted">– ganze Empfänger-Gruppen auf einmal einordnen, als Regel auch für künftige Importe</span></summary>
+        <div class="quick-body">
+          <table class="quick-table">
+            <thead><tr><th>Empfänger</th><th class="num">Buchungen</th><th class="num">Summe</th><th>Kategorie</th><th></th></tr></thead>
+            <tbody id="quick-body"></tbody>
+          </table>
+          <div class="quick-foot">
+            <button class="ghost" id="quick-more">Mehr Gruppen anzeigen</button>
+            <button class="ghost" id="quick-newcat">+ Neue Kategorie anlegen</button>
+          </div>
+        </div>
+      </details>
       <div class="toolbar">
         <input type="search" id="tx-search" placeholder="Suchen: Empfänger, Verwendungszweck, Notiz …">
         <select id="tx-category"><option value="">Alle Kategorien</option></select>

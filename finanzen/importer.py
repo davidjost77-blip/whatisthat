@@ -48,8 +48,9 @@ DATE_FORMATS = ["%d.%m.%Y", "%d.%m.%y", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/
 
 # Ein Stück Karten-/Kontonummer mit mindestens 4 Ziffern am Ende (z. B. "4930 •••• •••• 3767")
 CARD_RE = re.compile(r"(\d{4})\s*$")
-# PayPal-Lastschriften: der eigentliche Händler steht im Verwendungszweck
-PAYPAL_RE = re.compile(r"ihr einkauf bei\s+(.+?)\s*(?:,|$)", re.IGNORECASE)
+# PayPal/Klarna & Co.: der eigentliche Händler steht im Verwendungszweck
+PAYMENT_PROVIDERS = {"paypal": "PayPal", "klarna": "Klarna", "riverty": "Riverty", "afterpay": "Afterpay"}
+MERCHANT_RE = re.compile(r"(?:ihr einkauf bei|einkauf bei|purchase at)\s+(.+?)\s*(?:,|$)", re.IGNORECASE)
 ACCOUNT_LABELS = {"karte", "kreditkarte", "konto", "kontoname", "account", "kontobezeichnung", "girokonto"}
 
 IBAN_RE = re.compile(r"\b([A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){3,7}(?:\s?[A-Z0-9]{1,4})?)\b")
@@ -187,6 +188,36 @@ def _cell(row, mapping, field):
     return re.sub(r"\s+", " ", row[idx]).strip()
 
 
+def _tokens(name):
+    return [t for t in re.split(r"[^\wäöüß]+", name.lower()) if len(t) >= 3]
+
+
+def detect_owner(rows, mapping, decimal):
+    """Kontoinhaber = häufigster Auftraggeber bei Ausgängen (DKB: Spalte "Zahlungspflichtige*r")."""
+    if "payer" not in mapping or "payee" not in mapping:
+        return None
+    names = []
+    for row in rows:
+        amount = parse_amount(_cell(row, mapping, "amount"), decimal) if "amount" in mapping else None
+        if amount is not None and amount < 0:
+            names.append(_cell(row, mapping, "payer"))
+    if not names:
+        return None
+    # Nur echte Personennamen (mind. zwei Wörter), nicht z. B. "ISSUER" bei Kartenzahlungen
+    candidates = [n for n in names if len(set(_tokens(n))) >= 2]
+    if not candidates:
+        return None
+    if len(candidates) < max(3, len(names) / 5):
+        return None
+    # Namensteile, die (fast) immer vorkommen – die DKB hängt teils die Adresse an
+    counts = {}
+    for n in candidates:
+        for t in set(_tokens(n)):
+            counts[t] = counts.get(t, 0) + 1
+    tokens = {t for t, k in counts.items() if k >= 0.8 * len(candidates)}
+    return tokens if len(tokens) >= 2 else None
+
+
 def account_from_preamble(rows):
     """Konto aus Metadaten oberhalb der Kopfzeile.
 
@@ -243,6 +274,8 @@ def parse_file(data: bytes, filename="upload.csv", profiles=(), account=None):
     decimal = (profile or {}).get("decimal") or detect_decimal([c for c in amount_cells if c])
     date_format = (profile or {}).get("date_format")
 
+    owner_tokens = detect_owner(data_rows, mapping, decimal)
+
     transactions, skipped = [], 0
     for row in data_rows:
         status = _cell(row, mapping, "status").lower()
@@ -270,11 +303,15 @@ def parse_file(data: bytes, filename="upload.csv", profiles=(), account=None):
             counterparty = (payee or payer) if amount < 0 else (payer or payee)
         purpose = _cell(row, mapping, "purpose")
         booking_text = _cell(row, mapping, "booking_text")
-        if "paypal" in counterparty.lower():
-            m = PAYPAL_RE.search(purpose)
+        provider = next((p for p in PAYMENT_PROVIDERS if p in counterparty.lower()), None)
+        if provider:
+            m = MERCHANT_RE.search(purpose)
             if m:
                 counterparty = m.group(1).strip()
-                booking_text = f"{booking_text} · PayPal".strip(" ·")
+                booking_text = f"{booking_text} · {PAYMENT_PROVIDERS[provider]}".strip(" ·")
+        if owner_tokens and owner_tokens <= set(_tokens(counterparty)):
+            # Überweisung an sich selbst (anderes eigenes Konto) -> Regel "Eigene Konten"
+            booking_text = f"{booking_text} · Eigenes Konto".strip(" ·")
         if not counterparty:
             counterparty = purpose[:80]
 

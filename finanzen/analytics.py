@@ -9,6 +9,7 @@ Buchungslogik:
 * Unkategorisierte Buchungen werden nach Vorzeichen zugeordnet.
 """
 
+import re
 from collections import defaultdict
 from datetime import date, timedelta
 
@@ -231,3 +232,61 @@ def dashboard(conn, date_from=None, date_to=None, accounts=None):
         "largest": [{k: tx[k] for k in ("id", "date", "amount", "counterparty", "purpose", "category_id")}
                     for tx in largest],
     }
+
+
+def _group_key(name):
+    """Grobe Gruppierung von Empfängernamen: "RAPID7 - GERMANY - EUR- 1008" ~ "RAPID7 GERMANY GMBH"."""
+    words = [w for w in re.split(r"[^a-zäöüß]+", name.lower()) if len(w) >= 2]
+    return " ".join(words[:2])
+
+
+def _words(name):
+    return re.findall(r"[a-z0-9äöüß&]+", name.lower())
+
+
+def suggest_rule(names):
+    """Suchmuster für eine Regel, das alle Namensvarianten trifft: (op, pattern)."""
+    collapsed = [re.sub(r"\s+", " ", n.lower()).strip() for n in names]
+    if len(collapsed) == 1:
+        return "contains", collapsed[0]
+    common = _words(names[0])
+    for n in names[1:]:
+        w = _words(n)
+        i = 0
+        while i < min(len(common), len(w)) and common[i] == w[i]:
+            i += 1
+        common = common[:i]
+    if not common or len(" ".join(common)) < 3:
+        return "contains", collapsed[0]
+    plain = " ".join(common)
+    if all(plain in n for n in collapsed):
+        return "contains", plain
+    # z. B. "Karl August GmbH" und "Karl.August.GmbH/Nuernberg"
+    return "regex", r"[\W_]*".join(re.escape(w) for w in common)
+
+
+def uncategorized_groups(conn, limit=30):
+    """Unkategorisierte Buchungen, gruppiert nach Empfänger – Grundlage für "Schnell zuordnen"."""
+    groups = {}
+    for row in conn.execute(
+        "SELECT counterparty, amount, date FROM transactions WHERE category_id IS NULL AND counterparty != ''"
+    ):
+        key = _group_key(row["counterparty"])
+        if not key:
+            continue
+        g = groups.setdefault(key, {"names": {}, "count": 0, "sum": 0, "in": 0, "last": ""})
+        g["names"][row["counterparty"]] = g["names"].get(row["counterparty"], 0) + 1
+        g["count"] += 1
+        g["sum"] += row["amount"]
+        g["in"] += row["amount"] > 0
+        g["last"] = max(g["last"], row["date"])
+    out = []
+    for g in groups.values():
+        names = sorted(g["names"], key=lambda n: -g["names"][n])
+        direction = "in" if g["in"] == g["count"] else "out" if g["in"] == 0 else "any"
+        op, pattern = suggest_rule(names)
+        out.append({"name": names[0], "variants": names[:5], "op": op, "pattern": pattern, "count": g["count"],
+                    "sum": g["sum"], "direction": direction, "last": g["last"]})
+    # Wichtigste zuerst: häufig und/oder teuer
+    out.sort(key=lambda g: -(abs(g["sum"]) / 100 + g["count"] * 20))
+    return {"total": sum(g["count"] for g in out), "groups": out[:limit]}
