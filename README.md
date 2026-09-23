@@ -23,7 +23,21 @@ Zum Ausprobieren mit Demo-Daten (ein Jahr fiktiver Umsätze im DKB- und ING-Form
 python scripts\demo_daten.py inbox     # legt die Dateien in die Inbox, die App importiert sie automatisch
 ```
 
-macOS/Linux: `python3 -m finanzen --open`
+## Schnellstart (Mac)
+
+1. **Terminal** öffnen (Programme → Dienstprogramme) und prüfen, ob Python da ist: `python3 --version`.
+   Fragt macOS nach den „Command Line Developer Tools“, auf *Installieren* klicken. Damit kommen Python und git.
+2. Projekt holen und starten:
+   ```bash
+   git clone https://github.com/davidjost77-blip/whatisthat.git ~/Finanzen
+   cd ~/Finanzen
+   git checkout claude/finance-tracking-dashboards-eb5ls8
+   python3 -m finanzen --open
+   ```
+3. Später reicht ein Doppelklick auf **`Finanzen starten.command`** im Ordner `~/Finanzen`. Das Terminal-Fenster
+   muss offen bleiben, solange du die App nutzt. Beenden mit `Ctrl+C` oder durch Schließen des Fensters.
+
+Bank-Exporte importierst du per Drag & Drop unter *Import* oder indem du sie in `~/Finanzen/inbox` legst.
 
 ## Kontinuierlicher Import
 
