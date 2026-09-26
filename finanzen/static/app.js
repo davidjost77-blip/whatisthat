@@ -156,9 +156,15 @@ async function loadStatus() {
   sel.innerHTML = `<option value="">Alle Konten</option>` + state.status.accounts
     .map((a) => `<option value="${esc(a.account)}">${esc(a.account)} (${a.count})</option>`).join("");
   sel.value = current;
-  $("#sync-status").textContent = state.status.last_import
-    ? `Letzter Import: ${new Date(state.status.last_import.replace(" ", "T")).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" })}`
-    : "";
+  $("#sync-status").textContent = (state.status.last_import
+    ? `Letzter Import: ${new Date(state.status.last_import.replace(" ", "T")).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" })} · `
+    : "") + `Version ${state.status.app_version || "?"}`;
+  // Nach einem Update läuft auf dem Server eine neue Version, die Seite ist aber noch die alte → neu laden anbieten
+  state.pageVersion ||= state.status.app_version;
+  if (state.status.app_version && state.status.app_version !== state.pageVersion && !state.versionToast) {
+    state.versionToast = true;
+    toast(`Neue Version ${state.status.app_version} läuft – Seite neu laden, um sie zu sehen`, { action: { label: "Neu laden", run: () => location.reload() }, timeout: 60000 });
+  }
 }
 
 async function loadCategories() {
@@ -1594,7 +1600,7 @@ async function renderBalances() {
   let rows;
   try { rows = await api("GET", "/api/balances"); } catch { box.innerHTML = ""; return; }
   const SRC = { manuell: "von dir eingetragen", bank: "von der Bank", csv: "aus dem Export" };
-  box.innerHTML = rows.map((r) => r.card && !r.anchor
+  box.innerHTML = rows.map((r) => r.card
     ? `<div class="bal-row"><div><b>${esc(r.account)}</b><div class="meta">Kreditkarte – zählt nicht zum Kontostand (setzt sich über die Abrechnung vom Girokonto auf null), kein Eintrag nötig</div></div></div>`
     : `<form class="bal-row" data-account="${esc(r.account)}"><div><b>${esc(r.account)}</b>
         <div class="meta">${r.anchor ? `heute: <b>${money(r.current)}</b> · ${SRC[r.anchor.source] || r.anchor.source} am ${dateDe(r.anchor.date)}` : `<b>Kontostand unbekannt</b> – einmal eintragen, den Rest rechnet die App aus den Buchungen`}</div>

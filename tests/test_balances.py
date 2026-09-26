@@ -51,6 +51,17 @@ class BalanceTests(unittest.TestCase):
         self.assertEqual((back["anchor"], back["between"], back["bookings"], back["value"]), (424835, -500000, 3, -75165))
         self.assertEqual(res["missing"], [])
 
+    def test_card_export_with_saldo_does_not_count(self):
+        """DKB-Kreditkartenexport mit „Saldo vom …: -1.234,56 EUR“ – offene Kartenschulden gehören nicht zum Kontostand."""
+        balances.set_anchor(self.conn, "girokonto", "2026-09-26", 424835)
+        card = ('"Karte";"Visa Kreditkarte";"4930 \u2022\u2022\u2022\u2022 3767"\n""\n"Saldo vom 23.09.2026:";"-1.234,56 EUR"\n""\n'
+                '"Belegdatum";"Wertstellung";"Status";"Beschreibung";"Umsatztyp";"Betrag (\u20ac)";"Fremdw\u00e4hrungsbetrag"\n'
+                '"17.09.26";"18.09.26";"Gebucht";"UBER   *EATS";"Onlinezahlung";"-24,36";""\n')
+        res = ingest.import_bytes(self.conn, card.encode("utf-8-sig"), "karte.csv")
+        self.assertTrue(balances.is_card(res["account"]))
+        self.assertEqual(balances.balance_at(self.conn, "2026-09-26")["value"], 424835)
+        self.assertEqual(balances.balance_at(self.conn, "2026-08-24")["value"], 424835 - 300000 + 100000 - 300000)
+
     def test_balance_from_csv_preamble(self):
         rows = [['"Kontostand vom 26.09.2026:"', "4.248,35 €"]]
         rows = [[c.strip('"') for c in r] for r in rows]

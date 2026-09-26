@@ -6,6 +6,8 @@ import json
 import logging
 import mimetypes
 import re
+import time
+import threading
 from datetime import date, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -16,6 +18,28 @@ from . import analytics, balances, bank, cycles, db, depot, duplicates, importer
 
 log = logging.getLogger("finanzen.server")
 STATIC_DIR = Path(__file__).parent / "static"
+
+
+def app_version():
+    """Kennung des laufenden Programmstands (Git-Commit, sonst jüngste Dateiänderung) – so sieht man,
+    ob nach einem Update wirklich die neue Version läuft."""
+    root = Path(__file__).resolve().parent.parent
+    try:
+        head = (root / ".git" / "HEAD").read_text().strip()
+        if head.startswith("ref:"):
+            ref = root / ".git" / head[5:]
+            if ref.exists():
+                return ref.read_text().strip()[:7]
+            packed = (root / ".git" / "packed-refs").read_text()
+            m = re.search(r"^([0-9a-f]{40}) " + re.escape(head[5:]) + "$", packed, re.M)
+            if m:
+                return m.group(1)[:7]
+        elif re.fullmatch(r"[0-9a-f]{40}", head):
+            return head[:7]
+    except OSError:
+        pass
+    newest = max(f.stat().st_mtime for f in Path(__file__).parent.rglob("*") if f.is_file())
+    return time.strftime("%Y%m%d-%H%M", time.localtime(newest))
 mimetypes.add_type("font/woff2", ".woff2")  # ältere Python-Versionen kennen den Typ nicht
 MAX_UPLOAD = 20 * 1024 * 1024
 HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -45,6 +69,8 @@ class App:
         self.profiles_path = profiles_path
         self.watcher = None
         self.bank_dir = Path(db_path).resolve().parent / "bank"
+        self.app_version = app_version()
+        self.httpd = None
         db.init_db(db_path)
         conn = db.connect(db_path)
         depot.init(conn)
@@ -71,6 +97,7 @@ class App:
             ("GET", r"/api/transfers", self.transfer_check),
             ("GET", r"/api/balances", self.list_balances),
             ("GET", r"/api/duplicates", self.list_duplicates),
+            ("POST", r"/api/shutdown", self.shutdown),
             ("POST", r"/api/duplicates/remove", self.remove_duplicates),
             ("POST", r"/api/duplicates/restore", self.restore_duplicates),
             ("PUT", r"/api/balances", self.set_balance),
@@ -118,6 +145,7 @@ class App:
         cy = cycles.load(conn)
         return {
             "version": version,
+            "app_version": self.app_version,
             # Gehaltsmonate: ein Monat reicht vom Gehalt bis vor das nächste Gehalt
             "salary_months": cy.active,
             "months": cy.as_list(bounds[0], bounds[1]) if bounds[0] else [],
@@ -151,6 +179,12 @@ class App:
                                            "known": [k["account"] for k in end["known"]], "cards": end["cards"],
                                            "missing": end["missing"], "explain": {"start": start["known"], "end": end["known"]}}
         return data
+
+    def shutdown(self, conn, req):
+        """Beendet diese Instanz – ein neu gestarteter Stand übernimmt dann den Port (nur von diesem Rechner)."""
+        if self.httpd:
+            threading.Thread(target=self.httpd.shutdown, daemon=True).start()
+        return {"ok": True, "app_version": self.app_version}
 
     def list_duplicates(self, conn, req):
         return duplicates.summary(conn)

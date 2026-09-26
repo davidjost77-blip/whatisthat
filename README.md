@@ -58,6 +58,10 @@ Danach ruft die App **alle 6 Stunden** automatisch ab (PSD2 erlaubt 4 Abrufe am 
 private Schlüssel liegt nur lokal unter `data/bank/`. Duplikate zu früheren CSV-Importen werden erkannt, vorgemerkte
 Umsätze erst nach der Buchung übernommen.
 
+**Update:** `git pull`, dann wie gewohnt starten. Läuft noch die alte Version (z. B. in einem anderen
+Terminalfenster), beendet die neue sie automatisch und übernimmt. Welche Version läuft, steht oben rechts
+(„Version abc1234“); nach einem Update bietet die geöffnete Seite von selbst „Neu laden“ an.
+
 ## Kontinuierlicher Import
 
 Es gibt drei Wege, die du beliebig kombinieren kannst:
@@ -143,6 +147,9 @@ Mit eingeschalteten **Rücklagen** zeigt der Geldfluss dann den **Kontostand am 
 mehr Ausgaben als Einnahmen wird links „Aus Erspartem“ ausgeglichen, der See bleibt blau, solange genug auf dem Konto
 ist, und wird erst rot, wenn das Konto (voraussichtlich) gegen null oder ins Minus geht – dann fließt links
 „Konto im Minus“ zu. Ohne Rücklagen zeigt der See nur das Ergebnis des Monats.
+
+Stimmt ein Kontostand nicht, zeigt `python3 -m finanzen --pruefen` im Terminal, woraus die App ihn berechnet:
+welche Konten zählen, welcher eingetragene Stand benutzt wird und der Rechenweg der letzten Monate.
 
 ### Kreditkarten-Check: nichts doppelt, nichts verschwindet
 

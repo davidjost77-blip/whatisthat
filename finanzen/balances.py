@@ -9,6 +9,7 @@ auf null gestellt – der Kontostand ist, was die Bank für das Konto zeigt. (Fr
 Kartenumsätzen addiert; fehlten im Kartenexport Abrechnungszeilen, lief das über Monate ins Minus.)
 """
 
+import re
 from datetime import date
 
 from . import cycles
@@ -45,9 +46,16 @@ def anchors(conn):
     return out
 
 
-def _is_card(account):
+PAN = re.compile(r"\d{4}\s*[•*·xX.]{2,}[\s•*·xX.\d]*\d{4}")      # maskierte Kartennummer, z. B. 4930 •••• 3767
+
+
+def is_card(account):
+    """Kreditkartenkonto? (Name wie „Visa Kreditkarte ···3767“ oder maskierte Kartennummer)"""
     from .transfers import CARD_ACCOUNT
-    return bool(account and CARD_ACCOUNT.search(account))
+    return bool(account and (CARD_ACCOUNT.search(account) or PAN.search(account)))
+
+
+_is_card = is_card
 
 
 def _sum_until(conn, account, day):
@@ -64,7 +72,11 @@ def balance_at(conn, day, accounts=None):
     res = {"value": 0, "known": [], "cards": [], "missing": []}
     for acc in names:
         a = anc.get(acc)
-        if a:
+        if _is_card(acc):
+            # Kreditkarte zählt nie zum Kontostand – auch nicht mit „Saldo vom …“ aus dem Kartenexport
+            # (das sind offene Kartenschulden, die über die Abrechnung vom Girokonto beglichen werden)
+            res["cards"].append(acc)
+        elif a:
             between = _sum_until(conn, acc, day) - _sum_until(conn, acc, a["date"])
             v = a["amount"] + between
             n = conn.execute("SELECT COUNT(*) FROM transactions WHERE account = ? AND date > ? AND date <= ?",
@@ -73,8 +85,6 @@ def balance_at(conn, day, accounts=None):
             res["known"].append({"account": acc, "value": v, "anchor": a["amount"], "anchor_date": a["date"],
                                  "source": a["source"], "between": between, "bookings": n})
             res["value"] += v
-        elif _is_card(acc):
-            res["cards"].append(acc)                         # Kreditkarte: steht nach der Abrechnung auf null
         else:
             res["missing"].append(acc)
     return res
@@ -93,7 +103,7 @@ def overview(conn):
         day = max(today, r["last"])
         cur = (a["amount"] + _sum_until(conn, acc, day) - _sum_until(conn, acc, a["date"])) if a else None
         history = []
-        if a:                                                # zurückgerechnet: Stand am Ende der letzten Gehaltsmonate
+        if a and not _is_card(acc):                                                # zurückgerechnet: Stand am Ende der letzten Gehaltsmonate
             cy = cycles.load(conn)
             first = conn.execute("SELECT MIN(date) FROM transactions WHERE account = ?", (acc,)).fetchone()[0]
             k = cy.key_of(r["last"])
