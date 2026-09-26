@@ -144,8 +144,39 @@
   UI.icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
 
   // ------------------------------------------------------------------ Bewegung an/aus
+  /** Umschalter Hell / Dunkel / System (gespeichert pro Browser). */
+  const THEMES = [["system", "◐ System"], ["light", "☀ Hell"], ["dark", "☾ Dunkel"]];
+  UI.initTheme = function () {
+    let mode = "system";
+    try { mode = localStorage.getItem("theme") || "system"; } catch { /* privater Modus */ }
+    const apply = () => {
+      if (mode === "system") delete document.documentElement.dataset.theme;
+      else document.documentElement.dataset.theme = mode;
+    };
+    apply();
+    const bar = document.querySelector(".topbar");
+    if (!bar || document.querySelector(".theme-toggle")) return;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "ghost theme-toggle";
+    const sync = () => {
+      const [, label] = THEMES.find(([k]) => k === mode);
+      b.textContent = label;
+      b.title = "Darstellung wechseln: System → Hell → Dunkel";
+    };
+    b.onclick = () => {
+      mode = THEMES[(THEMES.findIndex(([k]) => k === mode) + 1) % THEMES.length][0];
+      try { localStorage.setItem("theme", mode); } catch { /* egal */ }
+      apply();
+      sync();
+    };
+    sync();
+    bar.append(b);
+  };
+
   UI.initMotion = function () {
     UI.initTabs();
+    UI.initTheme();
     let off = false;
     try { off = localStorage.getItem("motion") === "off"; } catch { /* privater Modus */ }
     document.body.classList.toggle("no-motion", off);

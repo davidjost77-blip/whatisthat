@@ -110,8 +110,8 @@ Streaming, Versicherungen …) und für vier Kategorien ein Beispiel-Budget gese
 
 ## Dashboards
 
-Gestaltet nach **[DESIGN.md](DESIGN.md)** (verbindlich, Stand 3): drei Zoomstufen, eine eigene Farbe je Element
-(Ausgaben violett, Sparquote türkis, Kategorien blau, Depot gold), Rot und Grün nur für Bewertungen, Schrift Inter,
+Gestaltet nach **[DESIGN.md](DESIGN.md)** (verbindlich, Stand 4): drei Zoomstufen, ein Farbton „Papier & Bronze“ mit
+warmen Graustufen, Rot nur für Warnungen, Schrift Inter, Umschalter Hell/Dunkel/System,
 Bewegung in allen Teilen (Kacheln schweben herein, Balken füllen sich, Zahlen zählen hoch, Diagramme wachsen), jede Zahl mit Soll-Wert und Alltagsäquivalent, Breadcrumb und <kbd>Esc</kbd> für den Weg zurück.
 
 | Stufe | Was du siehst | So kommst du hin |

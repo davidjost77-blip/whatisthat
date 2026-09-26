@@ -81,8 +81,8 @@ const goalMonth = () => monthOf(`${goalYear()}-12`);
 // Reihen unterscheiden sich über Helligkeit + direkte Beschriftung, nicht über Farbe (DESIGN.md §5).
 function shade(slot) {
   const t = UI.theme();
-  // Plan-ETF in Türkis, weitere ETFs in den übrigen Identitätsfarben, danach Abstufungen
-  return [t.teal, t.sky, t.violet, t.gold, UI.alpha(t.teal, 0.55), UI.alpha(t.sky, 0.55), UI.alpha(t.violet, 0.55), UI.alpha(t.gold, 0.55)][slot] || t.ink3;
+  // ein Farbton: Plan-ETF in vollem Bronze, weitere ETFs in helleren Stufen desselben Tons
+  return [1, 0.72, 0.5, 0.34, 0.24, 0.62, 0.42, 0.28].map((o) => UI.alpha(t.gold, o))[slot] || t.ink3;
 }
 const alpha = (color, a) => {
   if (color.startsWith("#")) {
@@ -1135,6 +1135,7 @@ function wire() {
 
   const retheme = () => { renderBlick(); if (zoom.level > 1) zoom.refresh(); };
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", retheme);
+  new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 }
 
 async function pollQuote() {

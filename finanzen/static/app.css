@@ -10,33 +10,35 @@
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
-/* Farb-Tokens: Identitätsfarbe je Element, Rot/Grün nur für Bewertung (DESIGN.md §5) */
+/* Farb-Tokens „Papier & Bronze“: ein Farbton, warme Graustufen, Rot nur für Warnungen (DESIGN.md §5) */
 :root {
   color-scheme: light;
-  --page: #f6f6f9;
-  --surface-1: #ffffff;
-  --surface-2: #f2f2f7;
-  --text-primary: #0f1020;
-  --text-secondary: #4a4b63;
-  --text-muted: #717288;
-  --axis-muted: #9091a6;
-  --grid: #ececf2;
-  --baseline: #cfd0dc;
-  --border: rgba(15, 16, 32, 0.08);
-  --shadow: 0 1px 2px rgba(15, 16, 32, 0.04), 0 8px 24px rgba(15, 16, 32, 0.06);
-  --shadow-lift: 0 2px 6px rgba(15, 16, 32, 0.06), 0 22px 48px rgba(15, 16, 32, 0.12);
-  /* Graustufen für Vergleich, Soll, Achsen */
-  --ink-1: #22233a; --ink-2: #717288; --ink-3: #bdbecc; --ink-4: #ececf2;
-  /* Identitätsfarben je Element – gleiche Sättigung, harmonisch verteilt (DESIGN.md §5) */
-  --c-violet: #6e56f8; --c-teal: #14a39a; --c-sky: #2f7fe6; --c-gold: #e8a13a;
-  --c-violet-ink: #5140d6; --c-teal-ink: #0d7d75; --c-sky-ink: #1e62bd; --c-gold-ink: #95620c;
-  /* Bewertung: nur mit Symbol + Text */
-  --signal-bad: #dc3545; --signal-good: #18794e;
-  --aurora-a: rgba(110, 86, 248, 0.10); --aurora-b: rgba(20, 163, 154, 0.08); --aurora-c: rgba(232, 161, 58, 0.07);
-  --accent: var(--c-violet); --accent-ink: var(--c-violet-ink); --on-accent: #ffffff;
+  --page: #faf8f4;
+  --surface-1: #fffdf9;
+  --surface-2: #f3efe7;
+  --text-primary: #1c1917;
+  --text-secondary: #57534e;
+  --text-muted: #78716c;
+  --axis-muted: #a39b91;
+  --grid: #ece6dc;
+  --baseline: #d6cfc3;
+  --border: rgba(28, 25, 23, 0.09);
+  --shadow: 0 1px 2px rgba(28, 25, 23, 0.04), 0 8px 24px rgba(28, 25, 23, 0.05);
+  --shadow-lift: 0 2px 6px rgba(28, 25, 23, 0.06), 0 20px 44px rgba(28, 25, 23, 0.10);
+  /* warme Graustufen für Vergleich, Soll, Achsen */
+  --ink-1: #1c1917; --ink-2: #78716c; --ink-3: #c9c1b5; --ink-4: #ece6dc;
+  /* ein einziger Farbton: Bronze (DESIGN.md §5) */
+  --bronze: #8a5a24; --bronze-ink: #71481a; --bronze-soft: #f4ebdd;
+  /* Bewertung: Rot nur für Handlungsbedarf; Positives im Bronzeton mit ✓ */
+  --signal-bad: #c8323a; --signal-good: #71481a;
+  --aurora-a: rgba(138, 90, 36, 0.07); --aurora-b: rgba(209, 160, 103, 0.06); --aurora-c: rgba(138, 90, 36, 0.04);
+  /* Alle Element-Töne zeigen auf Bronze: ein Farbton für die ganze App */
+  --c-violet: var(--bronze); --c-teal: var(--bronze); --c-sky: var(--bronze); --c-gold: var(--bronze);
+  --c-violet-ink: var(--bronze-ink); --c-teal-ink: var(--bronze-ink); --c-sky-ink: var(--bronze-ink); --c-gold-ink: var(--bronze-ink);
+  --accent: var(--bronze); --accent-ink: var(--bronze-ink); --on-accent: var(--surface-1);
   --good-text: var(--signal-good); --bad-text: var(--signal-bad);
   --good: var(--signal-good); --warning: var(--signal-bad); --serious: var(--signal-bad); --critical: var(--signal-bad);
-  --series-1: var(--c-violet); --series-2: var(--c-teal); --series-3: var(--c-sky); --series-4: var(--c-gold);
+  --series-1: var(--bronze); --series-2: var(--ink-2); --series-3: var(--ink-3); --series-4: var(--ink-2);
   --series-5: var(--ink-2); --series-6: var(--ink-3); --series-7: var(--ink-2); --series-8: var(--ink-3);
   --neutral: var(--ink-3);
   --radius: 18px;
@@ -47,44 +49,42 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-  --page: #0b0c14;
-  --surface-1: #13141f;
-  --surface-2: #1b1c2a;
-  --text-primary: #f2f2f8;
-  --text-secondary: #bcbdd0;
-  --text-muted: #8e8fa6;
-  --axis-muted: #7f8098;
-  --grid: #242536;
-  --baseline: #3a3b52;
-  --border: rgba(255, 255, 255, 0.08);
-  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 32px rgba(0, 0, 0, 0.35);
-  --shadow-lift: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 22px 48px rgba(0, 0, 0, 0.55);
-  --ink-1: #eeeef6; --ink-2: #a3a4ba; --ink-3: #5a5b73; --ink-4: #242536;
-  --c-violet: #9c8cff; --c-teal: #34d3c3; --c-sky: #6aa8ff; --c-gold: #f5bd5c;
-  --c-violet-ink: #b8adff; --c-teal-ink: #6ee7d9; --c-sky-ink: #9cc4ff; --c-gold-ink: #f8d08a;
-  --signal-bad: #ff6369; --signal-good: #3dd68c;
-  --aurora-a: rgba(156, 140, 255, 0.14); --aurora-b: rgba(52, 211, 195, 0.07); --aurora-c: rgba(245, 189, 92, 0.05);
+  --page: #12100d;
+  --surface-1: #1a1714;
+  --surface-2: #221e1a;
+  --text-primary: #f5f0e8;
+  --text-secondary: #c9c0b3;
+  --text-muted: #9a9083;
+  --axis-muted: #857b6e;
+  --grid: #2e2923;
+  --baseline: #463f36;
+  --border: rgba(245, 240, 232, 0.08);
+  --shadow: 0 1px 0 rgba(245, 240, 232, 0.03) inset, 0 12px 32px rgba(0, 0, 0, 0.35);
+  --shadow-lift: 0 1px 0 rgba(245, 240, 232, 0.05) inset, 0 22px 48px rgba(0, 0, 0, 0.5);
+  --ink-1: #f5f0e8; --ink-2: #a89e90; --ink-3: #5c544a; --ink-4: #2e2923;
+  --bronze: #d1a067; --bronze-ink: #e3bd8e; --bronze-soft: #3a2c1c;
+  --signal-bad: #ff6b70; --signal-good: #e3bd8e;
+  --aurora-a: rgba(209, 160, 103, 0.08); --aurora-b: rgba(209, 160, 103, 0.04); --aurora-c: rgba(138, 90, 36, 0.05);
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page: #0b0c14;
-  --surface-1: #13141f;
-  --surface-2: #1b1c2a;
-  --text-primary: #f2f2f8;
-  --text-secondary: #bcbdd0;
-  --text-muted: #8e8fa6;
-  --axis-muted: #7f8098;
-  --grid: #242536;
-  --baseline: #3a3b52;
-  --border: rgba(255, 255, 255, 0.08);
-  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 32px rgba(0, 0, 0, 0.35);
-  --shadow-lift: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 22px 48px rgba(0, 0, 0, 0.55);
-  --ink-1: #eeeef6; --ink-2: #a3a4ba; --ink-3: #5a5b73; --ink-4: #242536;
-  --c-violet: #9c8cff; --c-teal: #34d3c3; --c-sky: #6aa8ff; --c-gold: #f5bd5c;
-  --c-violet-ink: #b8adff; --c-teal-ink: #6ee7d9; --c-sky-ink: #9cc4ff; --c-gold-ink: #f8d08a;
-  --signal-bad: #ff6369; --signal-good: #3dd68c;
-  --aurora-a: rgba(156, 140, 255, 0.14); --aurora-b: rgba(52, 211, 195, 0.07); --aurora-c: rgba(245, 189, 92, 0.05);
+  --page: #12100d;
+  --surface-1: #1a1714;
+  --surface-2: #221e1a;
+  --text-primary: #f5f0e8;
+  --text-secondary: #c9c0b3;
+  --text-muted: #9a9083;
+  --axis-muted: #857b6e;
+  --grid: #2e2923;
+  --baseline: #463f36;
+  --border: rgba(245, 240, 232, 0.08);
+  --shadow: 0 1px 0 rgba(245, 240, 232, 0.03) inset, 0 12px 32px rgba(0, 0, 0, 0.35);
+  --shadow-lift: 0 1px 0 rgba(245, 240, 232, 0.05) inset, 0 22px 48px rgba(0, 0, 0, 0.5);
+  --ink-1: #f5f0e8; --ink-2: #a89e90; --ink-3: #5c544a; --ink-4: #2e2923;
+  --bronze: #d1a067; --bronze-ink: #e3bd8e; --bronze-soft: #3a2c1c;
+  --signal-bad: #ff6b70; --signal-good: #e3bd8e;
+  --aurora-a: rgba(209, 160, 103, 0.08); --aurora-b: rgba(209, 160, 103, 0.04); --aurora-c: rgba(138, 90, 36, 0.05);
 }
 
 * { box-sizing: border-box; }
@@ -156,8 +156,7 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
 }
 button, .button { cursor: pointer; font-weight: 500; text-decoration: none; display: inline-block; }
 button:hover, .button:hover { background: var(--surface-2); }
-button.primary { background: linear-gradient(135deg, var(--c-violet), #5b8cff); border-color: transparent; color: var(--on-accent); box-shadow: 0 6px 18px rgba(124, 92, 255, .28); }
-button.primary:hover { filter: brightness(1.07); background: linear-gradient(135deg, var(--c-violet), #5b8cff); }
+button.primary { border-color: transparent; }
 button.danger { color: var(--bad-text); }
 button.ghost { border-color: transparent; background: none; color: var(--text-muted); padding: 4px 8px; font-size: 12.5px; }
 button.ghost:hover { color: var(--text-primary); background: var(--surface-2); }
@@ -381,7 +380,7 @@ dialog label.inline { flex-direction: row; align-items: center; gap: 8px; }
 
 .blick-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .blick-bar h1 { font-size: clamp(22px, 2.6vw, 30px); letter-spacing: -0.025em; margin: 0; }
-.blick-bar h1 span { background: linear-gradient(90deg, var(--c-violet), var(--c-sky) 45%, var(--c-teal)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.blick-bar h1 span { background: linear-gradient(90deg, var(--bronze-ink), var(--bronze) 50%, var(--bronze-ink)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
 small.equiv, .equiv { color: var(--text-muted); font-weight: 400; font-size: .86em; white-space: nowrap; }
 
@@ -500,10 +499,10 @@ input, select, button, .button { border-radius: 10px; transition: background .18
 button:active:not(:disabled) { transform: scale(.97); }
 input:focus-visible, select:focus-visible { outline: none; border-color: var(--c-violet); box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-violet) 18%, transparent); }
 button:focus-visible, a:focus-visible { outline: 2px solid var(--c-violet); outline-offset: 2px; }
-button.primary { background: linear-gradient(135deg, var(--c-violet), color-mix(in srgb, var(--c-violet) 55%, var(--c-sky))); font-weight: 600;
-  box-shadow: 0 1px 0 rgba(255,255,255,.25) inset, 0 8px 20px color-mix(in srgb, var(--c-violet) 30%, transparent); }
-button.primary:hover { filter: none; transform: translateY(-1px); box-shadow: 0 1px 0 rgba(255,255,255,.25) inset, 0 12px 28px color-mix(in srgb, var(--c-violet) 40%, transparent);
-  background: linear-gradient(135deg, var(--c-violet), color-mix(in srgb, var(--c-violet) 55%, var(--c-sky))); }
+button.primary { background: var(--bronze); color: var(--on-accent); font-weight: 600;
+  box-shadow: 0 1px 0 rgba(255,255,255,.18) inset, 0 6px 16px color-mix(in srgb, var(--bronze) 22%, transparent); }
+button.primary:hover { filter: none; transform: translateY(-1px); background: var(--bronze-ink);
+  box-shadow: 0 1px 0 rgba(255,255,255,.18) inset, 0 10px 24px color-mix(in srgb, var(--bronze) 30%, transparent); }
 .seg { border-radius: 12px; padding: 4px; }
 .seg button { border-radius: 9px; transition: background .2s var(--ease-out), color .2s, box-shadow .2s; }
 .seg button.active { box-shadow: 0 1px 2px rgba(15,16,32,.08), 0 4px 10px rgba(15,16,32,.06); }
@@ -577,3 +576,4 @@ dialog[open] { animation: dialog-in .35s var(--ease-spring); }
 dialog[open]::backdrop { animation: fade-in .3s ease-out; }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(14px) scale(.97); } }
 @keyframes fade-in { from { opacity: 0; } }
+.theme-toggle { font-size: 12.5px; padding: 5px 10px; border-radius: 999px; white-space: nowrap; }

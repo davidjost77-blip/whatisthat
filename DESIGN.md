@@ -18,8 +18,8 @@ Oberfläche angepasst, nicht die Regel.
 2. Fokus: ein Element bildschirmfüllend, Trend + Vergleich
 3. Tiefe: exakte Daten, Tabellen
 
-### Visuelle Regeln (Stand 3, siehe Änderungen am Ende)
-- Farbenfroh: jedes Element hat eine eigene Identitätsfarbe; Rot und Grün sind reserviert für Abweichung/Handlungsbedarf und kommen immer mit Symbol + Text
+### Visuelle Regeln (Stand 4, siehe Änderungen am Ende)
+- **Ein Farbton** („Papier & Bronze“) plus warme Graustufen; Rot ist reserviert für Abweichung/Handlungsbedarf und kommt immer mit Symbol + Text
 - Schrift **Inter** (lokal mitgeliefert), Zahlen mit gleich breiten Ziffern
 - Keine Tachos, keine Kreisdiagramme, keine blinkenden oder flackernden Elemente
 - Bewegung in allen Teilen, wo sie etwas erzählt (Eintritt, Füllen, Hochzählen, Zoom); abschaltbar
@@ -71,27 +71,26 @@ Jeder Betrag bekommt ein Äquivalent, das man fühlen kann:
 - Schreibweise: `1.192 € · ≈ 1,4 Monate Fixkosten`. Äquivalente immer mit „≈“, auf eine Nachkommastelle.
 - Fehlen Umsätze und eigene Werte, steht an der Stelle ein Hinweis, wie man sie bekommt, und nie ein leerer Platz.
 
-### 5. Farbe
-**Farbe trägt Identität, Rot und Grün tragen Bewertung.** Jedes Element behält seine Farbe auf allen drei Stufen:
-in der Kachel, im Fokus-Diagramm und in der Tabelle (Akzentstreifen). So erkennt man beim Zoomen sofort,
-wo man ist.
+### 5. Farbe – „Papier & Bronze“
+**Ein einziger Farbton.** Bronze trägt alles, was zur App gehört (Hauptlinie, Balken, aktiver Reiter, Knopf,
+Überschriften-Akzent). Alles andere ist warmes Grau. Rot ist die einzige zweite Farbe und bedeutet immer
+Handlungsbedarf.
 
-| Token | Hell | Dunkel | Element |
+| Token | Hell | Dunkel | Verwendung |
 |---|---|---|---|
-| `--c-violet` | `#6e56f8` | `#9c8cff` | Ausgaben · Ziel |
-| `--c-teal` | `#14a39a` | `#34d3c3` | Sparquote · Was wäre wenn |
-| `--c-sky` | `#2f7fe6` | `#6aa8ff` | Kategorien · Sparplan-Takt |
-| `--c-gold` | `#e8a13a` | `#f5bd5c` | Depot |
-| `--signal-bad` | `#dc3545` | `#ff6369` | **nur** negative Abweichung / Handlungsbedarf, immer mit ⚠ und Text |
-| `--signal-good` | `#18794e` | `#3dd68c` | **nur** positive Aussage (Ziel erreicht, Soll erfüllt), immer mit ✓ und Text |
-| `--ink-1` … `--ink-4` | Graustufen | | Vergleichslinien, Soll-Linien, Einzahlungen, Achsen |
+| `--page` | `#faf8f4` | `#12100d` | Seitenhintergrund (Papier) |
+| `--surface-1` | `#fffdf9` | `#1a1714` | Karten, Kacheln |
+| `--bronze` | `#8a5a24` | `#d1a067` | Hauptreihe, Balken, Knopf, Spuren |
+| `--bronze-ink` | `#71481a` | `#e3bd8e` | Text im Farbton, positive Aussagen mit ✓ |
+| `--bronze-soft` | `#f4ebdd` | `#3a2c1c` | Flächen im Farbton (aktiver Reiter, Symbolhintergrund) |
+| `--ink-1` … `--ink-4` | warme Graustufen | | Soll-Linie (`ink-1`, gestrichelt), Vergleich (`ink-2`/`ink-3`), Raster (`ink-4`) |
+| `--signal-bad` | `#c8323a` | `#ff6b70` | **nur** negative Abweichung, immer mit ⚠ und Text |
 
-- Im Diagramm ist die **Hauptreihe** in der Elementfarbe (Linie + Verlaufsfläche), **Vergleiche** sind grau,
-  das **Soll** ist eine gestrichelte dunkle Linie, **Abweichungen** sind rot.
-- Keine Identitätsfarbe ist rot oder grün, damit Bewertung und Identität nie verwechselt werden.
-- Mehr als vier Reihen in einem Diagramm (z. B. ETF-Baukasten): Abstufungen der Elementfarbe plus direkte Beschriftung.
-- Hintergrund: sanfter Farbverlauf aus den Identitätsfarben, sehr hell (hell) bzw. sehr dunkel (dunkel), Text bleibt
-  auf ruhigen Flächen.
+- Im Diagramm: **Hauptreihe** in Bronze (Linie + Verlaufsfläche bzw. Balken), **Vergleiche** grau, **Soll** gestrichelt
+  in `ink-1`, **Abweichungen** rot.
+- Mehrere Reihen (z. B. ETF-Baukasten): Helligkeitsstufen von Bronze plus direkte Beschriftung, keine zweite Farbe.
+- Positive Aussagen („Ziel erreicht“) erscheinen in `--bronze-ink` mit ✓, nicht in Grün.
+- Darstellung **Hell / Dunkel / System** per Umschalter in der Kopfzeile (gespeichert pro Browser).
 
 ### 6. Verbotene Formen
 - Keine **Tachos** und Halbkreis-Anzeigen, keine **Kreis- und Ringdiagramme**, keine Sankey-Diagramme.
@@ -125,7 +124,7 @@ Bewegung erzählt, sie lenkt nicht ab. Sie steckt in jedem Dashboard-Teil, läuf
 - Überschriften 700–780, Laufweite −0,03 em; Fließtext 14,5 px / 1,5.
 
 ### 8. Blick-Metaphern
-Eine kleine Metapher pro Kachel, in der Farbe des Elements, mit genau einer Soll-Marke:
+Eine kleine Metapher pro Kachel, in Bronze, mit genau einer Soll-Marke:
 
 | Kachel | Metapher | Rot, wenn … |
 |---|---|---|
@@ -141,7 +140,7 @@ Eine kleine Metapher pro Kachel, in der Farbe des Elements, mit genau einer Soll
 - [ ] Welche Zoomstufe ist das? Hält sie deren Regeln ein (max. 4 / bildschirmfüllend / Tabelle)?
 - [ ] Breadcrumb sichtbar, Esc geht eine Stufe zurück, URL enthält die Stufe
 - [ ] Jede Zahl hat Soll oder Vergleich **und** ein Alltagsäquivalent
-- [ ] Elementfarbe konsequent auf allen Stufen; Rot/Grün nur für Bewertung, immer mit Symbol + Text
+- [ ] Nur Bronze und warme Graustufen; Rot nur für Handlungsbedarf, immer mit Symbol + Text
 - [ ] Kein Tacho, kein Kreis, nichts blinkt oder flackert
 - [ ] Eintritt/Übergang vorhanden, räumlich, ≤ 450 ms beim Zoom; Bewegungs-Schalter und reduzierte Bewegung respektiert
 - [ ] Hell- und Dunkelmodus geprüft, Handybreite ohne horizontales Scrollen
@@ -150,6 +149,8 @@ Eine kleine Metapher pro Kachel, in der Farbe des Elements, mit genau einer Soll
 
 ## Änderungen
 
+- **Stand 4** (nach Auswahl aus fünf Vorschlägen): ein einziger Farbton „Papier & Bronze“ statt vier Elementfarben,
+  Rot nur für Warnungen, Positives im Bronzeton. Umschalter Hell/Dunkel/System. Bewegung und Schrift wie Stand 3.
 - **Stand 3** (auf Wunsch): Das animierte Metapher-Bild ist wieder entfernt, der Blick besteht aus vier Kacheln.
   Neu: Schrift Inter, stimmigere Palette gleicher Sättigung, Bewegung in allen Dashboard-Teilen (§7).
 - **Stand 2** (auf Wunsch): Statt „Graustufen default, Farbe nur für Abweichung“ gilt „Identitätsfarbe je Element,
