@@ -75,3 +75,38 @@ class ReviewTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MixedMerchantTests(unittest.TestCase):
+    """Wolt liefert Restaurant-Essen und Supermarkt-Einkäufe: jede Buchung einzeln prüfen, ohne Regel für alle."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        path = Path(self.tmp.name) / "f.db"
+        db.init_db(path)
+        self.conn = db.connect(path)
+        csv = ("Buchungsdatum;Empfänger;Verwendungszweck;Betrag\n"
+               "03.09.2026;Wolt;Bestellung Pizza Roma;-23,90\n"
+               "10.09.2026;WOLT;Wolt Market Einkauf;-64,15\n"
+               "11.01.2025;Wolt;Bestellung Sushi;-31,00\n")
+        ingest.import_bytes(self.conn, csv.encode("utf-8"), "girokonto.csv")
+
+    def tearDown(self):
+        self.conn.close()
+        self.tmp.cleanup()
+
+    def test_each_wolt_booking_is_flagged_alone(self):
+        items = [u for u in review.review(self.conn, today=date(2026, 9, 30))["uncertain"]["items"] if u.get("mixed")]
+        self.assertEqual([u["count"] for u in items], [1, 1, 1])            # auch die ältere von 2025
+        self.assertTrue(all(u["rule"] is None for u in items))               # keine Regel für „alle ähnlichen“
+        self.assertEqual(items[0]["current"]["label"], "Freizeit › Lieferdienste")
+        self.assertIn("Supermarkt", items[0]["suggestion"]["label"])
+
+    def test_decision_applies_only_to_that_booking(self):
+        items = [u for u in review.review(self.conn, today=date(2026, 9, 30))["uncertain"]["items"] if u.get("mixed")]
+        market = next(u for u in items if u["sum"] == -6415)
+        review.assign(self.conn, market["ids"], market["suggestion"]["category_id"], rule=None, learn=False)
+        left = [u for u in review.review(self.conn, today=date(2026, 9, 30))["uncertain"]["items"] if u.get("mixed")]
+        self.assertEqual(len(left), 2)
+        rows = dict(self.conn.execute("SELECT purpose, category_id FROM transactions").fetchall())
+        self.assertNotEqual(rows["Wolt Market Einkauf"], rows["Bestellung Pizza Roma"])

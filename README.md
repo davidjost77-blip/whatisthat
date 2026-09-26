@@ -177,6 +177,10 @@ Panel: eine Karte nach der anderen, größter Betrag zuerst, gruppiert nach Empf
 - **Unsicher** markiert die App automatische Zuordnungen, wenn mehrere Regeln verschiedener Kategorien passen, wenn
   nur der Verwendungszweck (nicht der Empfänger) passte oder wenn der Betrag weit über dem Üblichen des Empfängers
   liegt. „Passt so“ bestätigt und merkt es sich; eine andere Kategorie korrigiert alle ähnlichen.
+- **Mischhändler** wie **Wolt** (Restaurant-Essen *und* Supermarkt-Einkäufe über Wolt Market) erscheinen Buchung für
+  Buchung als unsicher, bis du jede entschieden hast. Hier gilt eine Entscheidung nur für diese eine Buchung – es wird
+  keine Regel für „alle ähnlichen“ angelegt. Vorgeschlagen wird die Alternative (bei Wolt: Lebensmittel › Supermarkt).
+  Weitere Händler lassen sich in `finanzen/review.py` (`MIXED_MERCHANTS`) ergänzen.
 
 ## Dashboards
 

@@ -9,6 +9,7 @@ Eine Entscheidung legt eine Regel an und wendet sie auf alle ähnlichen Buchunge
 vollständig rückgängig machen.
 """
 
+import re
 from collections import Counter, defaultdict
 from datetime import date, timedelta
 from statistics import median
@@ -19,6 +20,22 @@ UNCERTAIN_DAYS = 365
 OUTLIER_FACTOR = 3
 OUTLIER_MIN = 3000            # mindestens 30 € über dem Üblichen
 LEARNED_PRIORITY = 90         # Regeln aus „Zuordnen“ (am Empfänger) gelten als sicher
+
+# Mischhändler: liefern je nach Bestellung ganz Verschiedenes – jede Buchung einzeln prüfen, bis du sie
+# entschieden hast; Entscheidungen gelten nur für diese Buchung (keine Regel für „alle ähnlichen“).
+MIXED_MERCHANTS = [
+    (re.compile(r"\bwolt\b", re.I), "Wolt liefert Restaurant-Essen und Supermarkt-Einkäufe (Wolt Market) – bitte einzeln prüfen",
+     "lebensmittel"),
+]
+
+
+def mixed(tx):
+    """(Grund, Name der Alternativ-Oberkategorie) für Buchungen bei Mischhändlern, sonst None."""
+    text = f"{tx['counterparty'] or ''} {tx['purpose'] or ''}"
+    for rx, why, alt in MIXED_MERCHANTS:
+        if rx.search(text):
+            return why, alt
+    return None
 
 
 def _cat_names(conn):
@@ -85,8 +102,9 @@ def review(conn, today=None, limit=60):
     groups = {}
     for r in conn.execute("SELECT id, date, amount, counterparty, purpose, booking_text, account FROM transactions "
                           "WHERE category_id IS NULL ORDER BY date DESC"):
-        g = groups.setdefault(_key(r), {"key": _key(r), "names": Counter(), "ids": [], "sum": 0, "in": 0, "samples": [],
-                                        "first": r["date"], "last": r["date"]})
+        key = f"#{r['id']}" if mixed(r) else _key(r)         # Mischhändler: jede Buchung einzeln
+        g = groups.setdefault(key, {"key": key, "names": Counter(), "ids": [], "sum": 0, "in": 0, "samples": [],
+                                    "first": r["date"], "last": r["date"], "mixed": mixed(r)})
         g["names"][r["counterparty"] or ""] += 1
         g["ids"].append(r["id"])
         g["sum"] += r["amount"]
@@ -100,7 +118,7 @@ def review(conn, today=None, limit=60):
         names = [n for n, _ in g["names"].most_common() if n]
         count = len(g["ids"])
         direction = "in" if g["in"] == count else "out" if g["in"] == 0 else "any"
-        op, pattern = analytics.suggest_rule(names) if names else (None, None)
+        op, pattern = analytics.suggest_rule(names) if names and not g["mixed"] else (None, None)
         cid, why = _suggest(names, by_key, by_word, cats, direction)
         unassigned.append({
             "kind": "unassigned", "key": g["key"], "name": names[0] if names else (g["samples"][0]["purpose"][:60] or "Ohne Empfänger"),
@@ -120,7 +138,27 @@ def review(conn, today=None, limit=60):
     for t in conn.execute("SELECT counterparty, amount FROM transactions WHERE amount < 0"):
         usual[analytics._group_key(t["counterparty"] or "")].append(-t["amount"])
     ugroups = {}
+    mixed_items = []
+    # Mischhändler: alle noch nicht von dir entschiedenen Buchungen (nicht nur das letzte Jahr)
+    for t in conn.execute("SELECT * FROM transactions WHERE category_id IS NOT NULL AND manual = 0 AND amount < 0 ORDER BY date DESC"):
+        mx = mixed(t)
+        if mx:
+            alt = next((c["id"] for c in cats.values() if c["name"].lower() == mx[1] and not c["parent_id"]), None)
+            alt = next((c["id"] for c in cats.values() if c["parent_id"] == alt and c["name"].lower() == "supermarkt"), alt)
+            if alt == t["category_id"]:
+                alt = next((c["id"] for c in cats.values() if c["name"].lower() == "lieferdienste"), None)
+            mixed_items.append({
+                "kind": "uncertain", "key": f"m{t['id']}", "name": t["counterparty"] or (t["purpose"] or "")[:60],
+                "variants": [t["counterparty"]] if t["counterparty"] else [], "ids": [t["id"]], "count": 1, "sum": t["amount"],
+                "direction": "out", "first": t["date"], "last": t["date"],
+                "samples": [{k2: t[k2] for k2 in ("id", "date", "amount", "purpose", "account")}],
+                "current": {"category_id": t["category_id"], "label": label(t["category_id"])}, "reasons": [mx[0]],
+                "rule": None, "mixed": True,
+                "suggestion": {"category_id": alt, "label": label(alt), "why": "häufige Alternative"} if alt else None,
+            })
     for t in txs:
+        if t["amount"] < 0 and mixed(t):
+            continue
         matching = [r for r in compiled if r.matches(t)]
         if not matching or matching[0].category_id != t["category_id"]:
             continue
@@ -167,6 +205,8 @@ def review(conn, today=None, limit=60):
             "suggestion": {"category_id": alt, "label": label(alt), "why": "andere passende Regel"} if alt else None,
         })
     uncertain.sort(key=lambda u: -(abs(u["sum"]) + u["count"] * 500))
+    mixed_items.sort(key=lambda u: u["first"], reverse=True)       # Mischhändler: neueste zuerst, direkt nacheinander
+    uncertain = mixed_items + uncertain
 
     return {
         "unassigned": {"count": sum(g["count"] for g in unassigned), "sum": sum(g["sum"] for g in unassigned),
