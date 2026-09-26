@@ -238,6 +238,23 @@ def account_from_preamble(rows):
     return None
 
 
+BALANCE_RE = re.compile(r"(kontostand|saldo)\s+(vom|am|per)\s+(\d{1,2}\.\d{1,2}\.\d{2,4})", re.I)
+
+
+def balance_from_preamble(rows, decimal=","):
+    """Kontostand aus den Metadaten, z. B. DKB: ``"Kontostand vom 26.09.2026:";"1.234,56 €"``."""
+    for row in rows:
+        cells = [c.strip() for c in row if c.strip()]
+        if len(cells) < 2:
+            continue
+        m = BALANCE_RE.search(cells[0])
+        if m:
+            day, amount = parse_date(m.group(3)), parse_amount(cells[1].replace("EUR", "").replace("€", ""), decimal)
+            if day and amount is not None:
+                return {"date": day, "amount": amount}
+    return None
+
+
 def account_from_filename(filename):
     """Stabiler Kontoname aus dem Dateinamen: Datumsangaben und Upload-Präfixe entfernen."""
     stem = Path(filename).stem
@@ -345,5 +362,6 @@ def parse_file(data: bytes, filename="upload.csv", profiles=(), account=None):
         "columns": {field: rows[header_idx][idx] for field, idx in mapping.items()},
         "account": default_account,
         "skipped": skipped,
+        "balance": balance_from_preamble(rows[:header_idx], decimal),
     }
     return transactions, info

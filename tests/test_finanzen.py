@@ -293,6 +293,16 @@ class ApiTests(unittest.TestCase):
         status, _ = self.call("POST", "/api/rules", {"category_id": pet, "op": "regex", "pattern": "("})
         self.assertEqual(status, 400)
 
+    def test_new_bookings_since_last_visit(self):
+        _, st = self.call("GET", "/api/status")
+        seen = st["max_id"]
+        self.call("POST", "/api/import", raw=BANK_SAMPLES["n26"], headers={"X-Filename": "n26.csv"})
+        _, st = self.call("GET", "/api/status")
+        self.assertGreater(st["max_id"], seen)
+        _, txs = self.call("GET", f"/api/transactions?since={seen}")
+        self.assertEqual(txs["total"], 2)
+        self.assertTrue(all(t["id"] > seen for t in txs["items"]))
+
     def test_csrf_header_required(self):
         req = urllib.request.Request(self.base + "/api/rules/apply", data=b"{}", method="POST")
         with self.assertRaises(urllib.error.HTTPError) as ctx:

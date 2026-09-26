@@ -14,6 +14,7 @@ class CompiledRule:
         self.direction = row["direction"]
         self.min_amount = row["min_amount"]
         self.max_amount = row["max_amount"]
+        self.priority = row["priority"] if "priority" in row.keys() else 100
         pattern = row["pattern"]
         if self.op == "regex":
             self.regex = re.compile(pattern, re.IGNORECASE)
@@ -89,4 +90,6 @@ def apply_rules(conn, only_uncategorized=False):
             conn.execute("UPDATE transactions SET category_id = ? WHERE id = ?", (new, tx["id"]))
             changed += 1
     conn.commit()
+    from . import transfers                     # Kreditkartenabrechnungen/Überträge danach abgleichen
+    transfers.reconcile(conn)
     return changed

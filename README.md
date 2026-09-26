@@ -7,8 +7,8 @@ Kategorien und Regeln** automatisch zuordnet und alles in **Dashboards** darstel
 ![Dashboard](docs/dashboard.png)
 
 **Datenschutz:** Alles läuft auf deinem Rechner. Der Server lauscht nur auf `127.0.0.1`, die Daten liegen in einer
-SQLite-Datei unter `data/`, und es gibt keine Cloud und kein Tracking. Die Diagrammbibliothek (ECharts) ist mitgeliefert,
-die App funktioniert also auch offline.
+SQLite-Datei unter `data/`, und es gibt keine Cloud und kein Tracking. Die Diagrammbibliothek (ECharts), die
+Animationsbibliothek (Motion) und die Schrift (Inter) sind mitgeliefert, die App funktioniert also auch offline.
 
 ## Schnellstart (Windows)
 
@@ -31,13 +31,36 @@ python scripts\demo_daten.py inbox     # legt die Dateien in die Inbox, die App 
    ```bash
    git clone https://github.com/davidjost77-blip/whatisthat.git ~/Finanzen
    cd ~/Finanzen
-   git checkout claude/finance-tracking-dashboards-eb5ls8
+   git checkout claude/elegant-pascal-9m6smy
    python3 -m finanzen --open
    ```
 3. Später reicht ein Doppelklick auf **`Finanzen starten.command`** im Ordner `~/Finanzen`. Das Terminal-Fenster
    muss offen bleiben, solange du die App nutzt. Beenden mit `Ctrl+C` oder durch Schließen des Fensters.
 
 Bank-Exporte importierst du per Drag & Drop unter *Import* oder indem du sie in `~/Finanzen/inbox` legst.
+
+## Bankanbindung (live, über Enable Banking)
+
+Statt CSV-Exporte zu ziehen, kann die App neue Buchungen direkt von der Bank holen – über
+[Enable Banking](https://enablebanking.com), einen regulierten PSD2-Kontoinformationsdienst (rund 2.500 Banken in Europa,
+u. a. DKB, ING, Sparkassen). Für die **eigenen Konten** ist das kostenlos („eingeschränkter Modus“).
+
+1. Bei enablebanking.com registrieren, im Control Panel eine Anwendung anlegen: Umgebung **Production**,
+   Redirect URL `https://localhost:8765/bank/callback`, Schlüssel erzeugen lassen (`.pem` wird heruntergeladen).
+2. Anwendung mit **„Activate by linking accounts“** aktivieren und die eigenen Konten verknüpfen.
+3. In der App unter **Import → Bankanbindung** Application-ID und `.pem` hinterlegen, Bank wählen, **Bei Bank anmelden**.
+4. Nach der Anmeldung zeigt der Browser eine Seite, die nicht lädt (`https://localhost…?code=…`) – die komplette Adresse
+   kopieren und in der App einfügen. Fertig: Die letzten Monate werden sofort übernommen.
+
+Danach ruft die App **alle 6 Stunden** automatisch ab (PSD2 erlaubt 4 Abrufe am Tag ohne dich), solange sie läuft;
+„Jetzt abrufen“ geht jederzeit. Das geöffnete Dashboard aktualisiert sich von selbst. Die Freigabe gilt je nach Bank
+90–180 Tage, danach einmal „Neu freigeben“. Deine Bank-Zugangsdaten sieht weder die App noch Enable Banking; der
+private Schlüssel liegt nur lokal unter `data/bank/`. Duplikate zu früheren CSV-Importen werden erkannt, vorgemerkte
+Umsätze erst nach der Buchung übernommen.
+
+**Update:** `git pull`, dann wie gewohnt starten. Läuft noch die alte Version (z. B. in einem anderen
+Terminalfenster), beendet die neue sie automatisch und übernimmt. Welche Version läuft, steht oben rechts
+(„Version abc1234“); nach einem Update bietet die geöffnete Seite von selbst „Neu laden“ an.
 
 ## Kontinuierlicher Import
 
@@ -71,9 +94,13 @@ Wichtige Parameter von `Watch-BankExports.ps1`:
 
 Falls PowerShell die Skripte blockiert: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 
-**Überlappende Exporte sind kein Problem.** Jede Buchung bekommt einen Fingerabdruck aus Konto, Datum, Betrag,
-Gegenpartei und Verwendungszweck, und Duplikate werden übersprungen. Du kannst also z. B. jede Woche „die letzten 90 Tage“
-exportieren. Vorgemerkte Buchungen (Status *vorgemerkt/pending*) werden ignoriert und erst übernommen, wenn sie gebucht sind.
+**Überlappende Exporte sind kein Problem.** Beim Import zählt die App je Konto, Tag und Betrag, wie viele Buchungen
+schon da sind, und übernimmt aus der Datei nur die fehlenden – auch wenn sich die Schreibweise zwischen zwei Exporten
+geändert hat (neues Exportformat, gekürzter Verwendungszweck). Zwei echte gleiche Käufe am selben Tag bleiben erhalten.
+Heißt ein Konto im Export anders als bisher (z. B. Dateiname statt IBAN), deckt sich aber mit einem vorhandenen, wird es
+diesem zugeordnet. Du kannst also z. B. jede Woche „die letzten 90 Tage“ exportieren. Doppelte aus früheren Importen
+findest und entfernst du unter *Import › Doppelte Buchungen* (rückgängig machbar). Vorgemerkte Buchungen (Status
+*vorgemerkt/pending*) werden ignoriert und erst übernommen, wenn sie gebucht sind.
 
 ## Unterstützte Formate
 
@@ -108,22 +135,132 @@ die Spaltennamen deiner Datei eintragen. Verfügbare Felder: `date`, `amount` (o
 Beim ersten Start wird ein Satz typischer deutscher Kategorien samt Regeln angelegt (Supermärkte, Tankstellen,
 Streaming, Versicherungen …) und für vier Kategorien ein Beispiel-Budget gesetzt. Alles davon kannst du ändern oder löschen.
 
+### Kontostand: Rücklagen = was wirklich auf dem Konto ist
+
+Unter *Import › Kontostände* trägst du einmal den heutigen Kontostand deines Girokontos ein – mit Bankanbindung oder
+einem DKB-Export („Kontostand vom …“) kommt er automatisch. Jeden anderen Tag rechnet die App aus den Buchungen.
+Kreditkarten brauchen keinen Eintrag und zählen nicht zum Kontostand: Sie stehen nach der Abrechnung vom Girokonto
+wieder auf null. Unter *Kontostände* siehst du die zurückgerechneten Stände am Ende der letzten Monate, und im
+Geldfluss zeigt das Überfahren des Sees den Rechenweg.
+
+Mit eingeschalteten **Rücklagen** zeigt der Geldfluss dann den **Kontostand am Ende des Zeitraums**: Ein Monat mit
+mehr Ausgaben als Einnahmen wird links „Aus Erspartem“ ausgeglichen, der See bleibt blau, solange genug auf dem Konto
+ist, und wird erst rot, wenn das Konto (voraussichtlich) gegen null oder ins Minus geht – dann fließt links
+„Konto im Minus“ zu. Ohne Rücklagen zeigt der See nur das Ergebnis des Monats.
+
+Stimmt ein Kontostand nicht, zeigt `python3 -m finanzen --pruefen` im Terminal, woraus die App ihn berechnet:
+welche Konten zählen, welcher eingetragene Stand benutzt wird und der Rechenweg der letzten Monate.
+
+### Kreditkarten-Check: nichts doppelt, nichts verschwindet
+
+Nach jedem Import und Bankabruf (und beim Start) gleicht die App Kreditkartenabrechnungen vom Girokonto mit den
+importierten Kartenumsätzen ab. Findet sie die Gegenbuchung auf dem Kartenkonto („Ausgleich Kreditkarte“, gleicher
+Betrag, wenige Tage Abstand) oder Kartenumsätze im Abrechnungszeitraum, zählt die Abrechnung als **Umbuchung** – die
+Käufe stehen ja schon einzeln da. Ist die Karte nicht importiert, zählt die Abrechnung als **Ausgabe**, damit die
+Käufe nicht fehlen. Einzelkäufe mit Debitkarte („VISA Debit“, „Kartenzahlung“) sind keine Abrechnungen und bleiben
+Ausgaben. Das Ergebnis steht unter *Import › Kreditkarten-Check*; von Hand gesetzte Kategorien bleiben unangetastet.
+
+### Monatsplan: ein Sparziel, Budgets im Verhältnis
+
+Oben unter *Kategorien & Regeln*: Du setzt **ein Sparziel pro Monat** (in % des Ø Einkommens der letzten 6 Monate).
+Der Rest ist dein Ausgabenrahmen, verteilt auf die Kategorien. Verschiebst du das Ziel, passen sich alle nicht
+gesperrten Budgets im Verhältnis an; verschiebst du ein Budget, gleichen die übrigen nicht gesperrten es aus.
+Fixkosten sind standardmäßig **gesperrt**. **Steuerbar** markiert Kategorien, die du direkt beeinflussen kannst
+(Standard Freizeit, Shopping) – sie erscheinen im Geldfluss im tieferen Ton. Änderungen werden sofort gespeichert.
+
+### Monate = Gehaltsmonate, Startseite = laufender Monat
+
+Die Startseite zeigt den **laufenden Monat** („Dieser Monat“). Ein Monat reicht immer **vom Gehaltseingang bis
+unmittelbar vor den nächsten** – das Gehalt ist der erste Eintrag des Monats. Erkannt wird das Gehalt über die
+Kategorie „Gehalt“; Sonderzahlungen (Weihnachtsgeld, Korrekturen) starten keinen neuen Monat. Benannt wird ein
+Gehaltsmonat nach dem Kalendermonat, in dem die meisten seiner Tage liegen (Gehalt am 27.08. → „September“). Der
+laufende Monat endet am Tag vor dem erwarteten nächsten Gehalt. Alle Monatswerte – Soll, Budgets, Ø 6 Monate,
+Monatsverlauf, Vergleich mit dem Vormonat – rechnen in Gehaltsmonaten. Ohne erkennbares Gehalt gelten Kalendermonate.
+
+### Zuordnen – ohne Kategorie und unsicher
+
+Über den Kennzahlen im Dashboard erscheint ein Hinweis, sobald etwas offen ist („⚠ 3 Buchungen ohne Kategorie“,
+„? 12 unsichere Zuordnungen“); auch „Nicht kategorisiert“ im Geldfluss ist anklickbar. Ein Klick öffnet ein kompaktes
+Panel: eine Karte nach der anderen, größter Betrag zuerst, gruppiert nach Empfänger.
+
+- **Enter** übernimmt den Vorschlag (aus früheren Zuordnungen ähnlicher Empfänger), **1–8** die häufigsten Kategorien,
+  Suchfeld für alle anderen, **+ Neu** legt eine Kategorie an. **S/→** überspringt, **←** zurück, **Esc** schließt.
+- Jede Entscheidung gilt für **alle ähnlichen** Buchungen – auch künftige (es wird eine Regel am Empfänger angelegt).
+  „Rückgängig“ im Hinweis macht Zuordnung und Regel vollständig rückgängig.
+- **Unsicher** markiert die App automatische Zuordnungen, wenn mehrere Regeln verschiedener Kategorien passen, wenn
+  nur der Verwendungszweck (nicht der Empfänger) passte oder wenn der Betrag weit über dem Üblichen des Empfängers
+  liegt. „Passt so“ bestätigt und merkt es sich; eine andere Kategorie korrigiert alle ähnlichen.
+- **Mischhändler** wie **Wolt** (Restaurant-Essen *und* Supermarkt-Einkäufe über Wolt Market) erscheinen Buchung für
+  Buchung als unsicher, bis du jede entschieden hast. Hier gilt eine Entscheidung nur für diese eine Buchung – es wird
+  keine Regel für „alle ähnlichen“ angelegt. Vorgeschlagen wird die Alternative (bei Wolt: Lebensmittel › Supermarkt).
+  Weitere Händler lassen sich in `finanzen/review.py` (`MIXED_MERCHANTS`) ergänzen.
+
 ## Dashboards
 
-Alle Diagramme reagieren auf die gemeinsame Filterzeile (Zeitraum, Konto). Ein Klick auf Balken, Monate oder Tage
-springt zu den passenden Umsätzen. Jede Karte hat eine **Tabellenansicht**, außerdem gibt es einen Dunkelmodus
-(folgt der Systemeinstellung).
+Gestaltet nach **[DESIGN.md](DESIGN.md)** (verbindlich, Stand 8): wählbares Farbschema (Standard „Papier & Bronze“, dazu Tinte, Graphit, Salbei), Geldfluss als See mit feinen Fäden,
+Rot nur für Warnungen, Schrift Inter, Umschalter Hell/Dunkel/System, Bewegung in allen Teilen, jede Zahl mit Soll-Wert
+und Alltagsäquivalent.
 
-- **Kennzahlen**: Einnahmen, Ausgaben, Überschuss, Sparquote, jeweils mit Verlauf und Vergleich zum gleich langen Vorzeitraum
-- **Einnahmen & Ausgaben** pro Monat mit Überschuss-Linie
-- **Ausgaben nach Kategorie** mit Anteil und Unterkategorien im Tooltip
-- **Geldfluss** (Sankey): Einnahmequellen → verfügbares Geld → Kategorien und Überschuss
-- **Kategorien im Zeitverlauf**: gestapelt, die sieben größten Kategorien plus „Übrige“
-- **Budgets** mit Warnstufen (ab 85 % und bei Überschreitung)
-- **Kontostand-Verlauf**: kumulierte Buchungen. Er beginnt bei 0 mit dem ersten Import und zeigt daher die Entwicklung, nicht den absoluten Kontostand.
-- **Top-Empfänger**, **Ausgaben-Kalender** (Heatmap pro Tag) und **größte Einzelausgaben**
+Die Startseite zeigt alles auf einen Blick, geordnet nach Wichtigkeit, und folgt der Filterleiste (Zeitraum, Konto).
+Mit **‹ Monat zurück** und **Monat vor ›** springst du Gehaltsmonat für Gehaltsmonat durch die Vergangenheit:
 
-![Dunkelmodus](docs/dashboard-dunkel.png)
+1. **Kennzahlen**: neues Einkommen, Ausgaben (Anteil vom neuen Einkommen, gegen den anteiligen Plan), Differenz
+   (mit eingeschalteten Rücklagen inkl. Übertrag aus dem Vergleichszeitraum), Sparquote (gegen dein Sparziel)
+2. **Geldfluss** im Zentrum: links die Einnahmen in der Einnahmenfarbe, rechts Kategorien, „Sparen & Depot“ und
+   „Übrig“ in der Ausgabenfarbe; steuerbare Kategorien im tieferen Ton. Der See zeigt rein, raus und die Differenz und
+   färbt sich nach dem erwarteten Ergebnis zum Monatsende: blau bei klarem Plus, je näher an null desto röter, rot im Minus. Der Schalter **Rücklagen** holt
+   das Plus aus dem Vormonat dazu (fließt links blau zu); geht in einem Monat mehr raus als reinkommt, gleicht
+   „Aus Erspartem“ links aus. Ohne Rücklagen zeigt der See das Minus offen. Das **Farbpaar** (Blau/Rot,
+   Petrol/Koralle, Salbei/Terrakotta) wählst du im Geldfluss. Rot gewarnt wird nur ab 100 € Kategoriesumme. Der See verhält sich wie
+   ein Wassertropfen: Fährst du mit der Maus übers Ufer oder klickst hinein, wabbelt er an dieser Stelle; neue
+   Buchungen seit deinem letzten Blick stoßen ihn dort an, wo ihr Fluss mündet.
+   **Klick auf eine Kategorie** öffnet ihr Unterdashboard: Unterkategorien gegen den Vergleichszeitraum (Vormonat;
+   beim laufenden Jahr derselbe Zeitraum im Vorjahr).
+3. **Kategorien gegen Soll** (Budget bzw. Ø der letzten 6 Monate) und **Depot & Sparplan**
+4. **Einnahmen & Ausgaben pro Monat**
+5. **Größte Ausgaben** und **Top-Empfänger**
+
+**⤢** öffnet Karten im Vollbild (Trend, Vergleich, exakte Tabellen), <kbd>Esc</kbd> geht zurück. Die Maßstäbe
+(Monats-Soll, Fixkosten, Sparquote-Soll) stellst du im Vollbild „Ausgaben“ unter *Exakte Zahlen* ein; welche Kategorien
+Fixkosten sind, im Kategorie-Dialog.
+
+![Übersicht mit Geldfluss](docs/dashboard.png)
+
+![Zusammensetzung einer Kategorie](docs/dashboard-dunkel.png)
+
+## Sparplan & ETF-Projektion
+
+Unter **Sparplan** (<http://localhost:8765/sparplan.html>) bildet die App deinen ETF-Sparplan ab. Vorbelegt ist der laufende
+Plan: 250 € monatlich in den **Vanguard FTSE All-World (Acc)** (VWCE, IE00BK5BQT80) mit den bisherigen Käufen.
+
+Die Sparplan-Seite ist eine durchgehende Seite: Depot heute, Sparplan-Takt, Was wäre wenn, Ziel, Käufe & Abgleich.
+Jeder Abschnitt lässt sich per ⤢ im Vollbild öffnen.
+
+![Sparplan](docs/sparplan.png)
+
+- **Depot heute**: Wert gegen Einzahlungen. Im Fokus Depotwert pro Handelstag, Kursverlauf (1 Jahr, 5 Jahre, seit
+  Auflage) gegen deinen Ø Kaufkurs. In der Tiefe alle Käufe.
+- **Automatische Sparplan-Buchung**: Jeden Monat am Ausführungstag (bzw. am nächsten Handelstag) bucht die App die
+  Rate selbst, zum Schlusskurs dieses Tages. Ein Import von Kontoauszügen ist dafür nicht nötig. Die Stückzahl ist als
+  *geschätzt* markiert, bis du den Kauf per Klick mit der Abrechnung bestätigst. Rate, Ausführungstag und Pause stellst
+  du unter *Sparplan-Takt → Käufe* ein. Einmalkäufe verschieben nichts, eine von Hand eingetragene Rate wird nicht doppelt
+  gebucht, und der Regler unter *Was wäre wenn* ändert nur die Projektion, nie den echten Plan.
+- **Sparplan-Takt**: eine Perle pro Monat, gefüllt = Kauf erfasst. Farbig wird es, wenn eine fällige Rate fehlt oder
+  der Kontoauszug nicht zu den erfassten Käufen passt. In der Tiefe Käufe, Guthaben und Kontoauszug.
+- **Ziel** (Standard 100.000 € in 20 Jahren, im Fokus änderbar): mittlerer Verlauf gegen das Ziel, Chance in x von 10
+  Verläufen, nötige Monatsrate, Meilensteine und monatliche Entnahme als Anteil deiner Fixkosten.
+- **Was wäre wenn**: Sparrate, Laufzeit, jährliche Erhöhung, Rendite, Schwankung, Kosten, Inflation, Steuern
+  (vereinfacht) und Sonderzahlungen per Regler. Die Projektion zeigt mittleren Verlauf und Bandbreite aus 600 simulierten
+  Börsenverläufen, dazu drei Szenarien (4 / 7 / 9 % p. a.) und den **ETF-Baukasten**, in dem du weitere ETFs
+  hypothetisch dazunimmst (MSCI World, Schwellenländer, S&P 500, Nasdaq 100, Small Cap Value, Technologie, Gold,
+  Geldmarkt oder frei gesucht).
+- **Live-Kurse** kommen über den lokalen Server von Yahoo Finance (Xetra, verzögert), werden in der Datenbank
+  zwischengespeichert und jede Minute aktualisiert. Ohne Internet rechnet die App mit dem letzten gespeicherten Stand
+  bzw. dem letzten Kaufkurs.
+
+![Sparplan: Fokus Ziel](docs/sparplan-ziel.png)
+
+Alle Einstellungen werden automatisch gespeichert. Die Projektion ist eine Modellrechnung, keine Prognose.
 
 ## Weitere Optionen
 
@@ -147,8 +284,11 @@ finanzen/
   ingest.py     Import in die DB und Überwachung des Inbox-Ordners
   rules.py      Regel-Engine
   analytics.py  Aggregationen für die Dashboards
+  depot.py      ETF-Depot, Sparplan-Einstellungen, Kursabruf mit Zwischenspeicher
   server.py     JSON-API und Auslieferung der Oberfläche
-  static/       Web-Oberfläche (HTML/CSS/JS, ECharts)
+  static/       Web-Oberfläche (HTML/CSS/JS, ECharts, Motion)
+                ui-core.js = Zoomstufen, Breadcrumb, Esc, Äquivalente · sparplan-model.js = Projektion
+DESIGN.md       verbindliche Gestaltungsregeln
 scripts/        PowerShell-Watcher, Autostart, Demo-Daten
 tests/          python -m unittest discover -s tests
 ```

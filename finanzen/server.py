@@ -6,15 +6,41 @@ import json
 import logging
 import mimetypes
 import re
+import time
+import threading
+from datetime import date, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import analytics, db, importer, ingest, rules
+from . import analytics, balances, bank, cycles, db, depot, duplicates, importer, ingest, review, rules, transfers
 
 log = logging.getLogger("finanzen.server")
 STATIC_DIR = Path(__file__).parent / "static"
+
+
+def app_version():
+    """Kennung des laufenden Programmstands (Git-Commit, sonst jüngste Dateiänderung) – so sieht man,
+    ob nach einem Update wirklich die neue Version läuft."""
+    root = Path(__file__).resolve().parent.parent
+    try:
+        head = (root / ".git" / "HEAD").read_text().strip()
+        if head.startswith("ref:"):
+            ref = root / ".git" / head[5:]
+            if ref.exists():
+                return ref.read_text().strip()[:7]
+            packed = (root / ".git" / "packed-refs").read_text()
+            m = re.search(r"^([0-9a-f]{40}) " + re.escape(head[5:]) + "$", packed, re.M)
+            if m:
+                return m.group(1)[:7]
+        elif re.fullmatch(r"[0-9a-f]{40}", head):
+            return head[:7]
+    except OSError:
+        pass
+    newest = max(f.stat().st_mtime for f in Path(__file__).parent.rglob("*") if f.is_file())
+    return time.strftime("%Y%m%d-%H%M", time.localtime(newest))
+mimetypes.add_type("font/woff2", ".woff2")  # ältere Python-Versionen kennen den Typ nicht
 MAX_UPLOAD = 20 * 1024 * 1024
 HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
@@ -42,7 +68,15 @@ class App:
         self.inbox = inbox
         self.profiles_path = profiles_path
         self.watcher = None
+        self.bank_dir = Path(db_path).resolve().parent / "bank"
+        self.app_version = app_version()
+        self.httpd = None
         db.init_db(db_path)
+        conn = db.connect(db_path)
+        depot.init(conn)
+        bank.init(conn)
+        self.transfer_report = transfers.reconcile(conn)    # bestehende Daten beim Start einmal abgleichen
+        conn.close()
         self.routes = [
             ("GET", r"/api/status", self.status),
             ("GET", r"/api/dashboard", self.dashboard),
@@ -60,15 +94,43 @@ class App:
             ("DELETE", r"/api/rules/(\d+)", self.delete_rule),
             ("POST", r"/api/rules/preview", self.preview_rule),
             ("POST", r"/api/rules/apply", self.apply_rules),
+            ("GET", r"/api/transfers", self.transfer_check),
+            ("GET", r"/api/balances", self.list_balances),
+            ("GET", r"/api/duplicates", self.list_duplicates),
+            ("POST", r"/api/shutdown", self.shutdown),
+            ("POST", r"/api/duplicates/remove", self.remove_duplicates),
+            ("POST", r"/api/duplicates/restore", self.restore_duplicates),
+            ("PUT", r"/api/balances", self.set_balance),
             ("POST", r"/api/import", self.import_file),
             ("GET", r"/api/imports", self.list_imports),
             ("DELETE", r"/api/imports/(\d+)", self.delete_import),
             ("GET", r"/api/export\.csv", self.export_csv),
+            ("GET", r"/api/measures", self.measures),
+            ("GET", r"/api/category_flow", self.category_flow),
+            ("GET", r"/api/depot", self.get_depot),
+            ("PUT", r"/api/depot/settings", self.update_depot_settings),
+            ("POST", r"/api/depot/tx", self.create_depot_tx),
+            ("PUT", r"/api/depot/tx/(\d+)", self.update_depot_tx),
+            ("DELETE", r"/api/depot/tx/(\d+)", self.delete_depot_tx),
+            ("GET", r"/api/quotes/chart", self.quote_chart),
+            ("GET", r"/api/quotes/search", self.quote_search),
+            ("GET", r"/api/review", self.review_list),
+            ("POST", r"/api/review/assign", self.review_assign),
+            ("POST", r"/api/review/confirm", self.review_confirm),
+            ("POST", r"/api/review/undo", self.review_undo),
+            ("GET", r"/api/bank", self.bank_status),
+            ("PUT", r"/api/bank/config", self.bank_config),
+            ("PUT", r"/api/bank/settings", self.bank_settings),
+            ("GET", r"/api/bank/aspsps", self.bank_aspsps),
+            ("POST", r"/api/bank/auth", self.bank_auth),
+            ("POST", r"/api/bank/session", self.bank_session),
+            ("POST", r"/api/bank/sync", self.bank_sync),
+            ("POST", r"/api/bank/disconnect", self.bank_disconnect),
         ]
 
     # ------------------------------------------------------------------ Status
     def status(self, conn, req):
-        bounds = conn.execute("SELECT MIN(date), MAX(date), COUNT(*) FROM transactions").fetchone()
+        bounds = conn.execute("SELECT MIN(date), MAX(date), COUNT(*), COALESCE(MAX(id), 0) FROM transactions").fetchone()
         accounts = [
             {"account": r["account"], "count": r["n"], "last": r["last"]}
             for r in conn.execute(
@@ -76,10 +138,21 @@ class App:
             )
         ]
         last_import = conn.execute("SELECT imported_at FROM imports ORDER BY id DESC LIMIT 1").fetchone()
+        # Datenstand: ändert sich bei jedem Import, Bankabruf, jeder Umkategorisierung → Dashboard aktualisiert sich
+        version = conn.execute(
+            "SELECT (SELECT COALESCE(MAX(id), 0) FROM imports) || '-' || COUNT(*) || '-' || COALESCE(SUM(amount), 0) || '-' || "
+            "COALESCE(SUM(COALESCE(category_id, 0) * (id % 97)), 0) FROM transactions").fetchone()[0]
+        cy = cycles.load(conn)
         return {
+            "version": version,
+            "app_version": self.app_version,
+            # Gehaltsmonate: ein Monat reicht vom Gehalt bis vor das nächste Gehalt
+            "salary_months": cy.active,
+            "months": cy.as_list(bounds[0], bounds[1]) if bounds[0] else [],
             "min": bounds[0],
             "max": bounds[1],
             "count": bounds[2],
+            "max_id": bounds[3],          # neue Buchungen seit dem letzten Besuch erkennen (See stößt an)
             "accounts": accounts,
             "inbox": str(Path(self.inbox).resolve()) if self.inbox else None,
             "inbox_results": self.watcher.last_results if self.watcher else [],
@@ -88,10 +161,143 @@ class App:
 
     def dashboard(self, conn, req):
         q = req.query
-        return analytics.dashboard(conn, q.get("from", [None])[0], q.get("to", [None])[0], q.get("account"))
+        date_from, date_to = q.get("from", [None])[0], q.get("to", [None])[0]
+        data = analytics.dashboard(conn, date_from, date_to, q.get("account"))
+        if not data.get("empty"):
+            # Sparplan-Käufe im Zeitraum – Ersatz für den Sparen-Strom, falls die Bank-Umbuchung nicht im Export ist
+            rng = data["range"]
+            data["flow"]["depot"] = conn.execute(
+                "SELECT COALESCE(SUM(amount), 0) FROM depot_tx WHERE date BETWEEN ? AND ?", (rng["from"], rng["to"])
+            ).fetchone()[0]
+            # Echter Kontostand (wenn bekannt): am Tag vor dem Zeitraum und am Ende (bzw. heute im laufenden Zeitraum)
+            if balances.anchors(conn):
+                accs = q.get("account")
+                start_day = (date.fromisoformat(rng["from"]) - timedelta(days=1)).isoformat()
+                end_day = min(rng["to"], date.today().isoformat())
+                start, end = balances.balance_at(conn, start_day, accs), balances.balance_at(conn, end_day, accs)
+                data["account_balance"] = {"start": start["value"], "start_date": start_day, "end": end["value"], "end_date": end_day,
+                                           "known": [k["account"] for k in end["known"]], "cards": end["cards"],
+                                           "missing": end["missing"], "explain": {"start": start["known"], "end": end["known"]}}
+        return data
+
+    def shutdown(self, conn, req):
+        """Beendet diese Instanz – ein neu gestarteter Stand übernimmt dann den Port (nur von diesem Rechner)."""
+        if self.httpd:
+            threading.Thread(target=self.httpd.shutdown, daemon=True).start()
+        return {"ok": True, "app_version": self.app_version}
+
+    def list_duplicates(self, conn, req):
+        return duplicates.summary(conn)
+
+    def remove_duplicates(self, conn, req):
+        return duplicates.remove(conn)
+
+    def restore_duplicates(self, conn, req):
+        return duplicates.restore(conn, req.json().get("rows") or [])
+
+    def list_balances(self, conn, req):
+        return balances.overview(conn)
+
+    def set_balance(self, conn, req):
+        body = req.json()
+        account = (body.get("account") or "").strip()
+        if not account or not conn.execute("SELECT 1 FROM transactions WHERE account = ? LIMIT 1", (account,)).fetchone():
+            raise ApiError("Unbekanntes Konto.")
+        day = body.get("date") or date.today().isoformat()
+        balances.set_anchor(conn, account, day, euro_to_cents(body.get("amount")), "manuell")
+        return {"ok": True, "balances": balances.overview(conn)}
+
+    def category_flow(self, conn, req):
+        q = req.query
+        try:
+            return analytics.category_flow(conn, int(q.get("id", ["0"])[0]), q.get("from", [None])[0], q.get("to", [None])[0],
+                                           q.get("account"))
+        except KeyError as e:
+            raise ApiError(str(e), HTTPStatus.NOT_FOUND)
+
+    def measures(self, conn, req):
+        return analytics.measures(conn, depot.get_settings(conn)["targets"])
 
     def suggestions(self, conn, req):
         return analytics.uncategorized_groups(conn, int(req.query.get("limit", [30])[0]))
+
+    # ------------------------------------------------------------ Zuordnen (ohne Kategorie / unsicher)
+    def review_list(self, conn, req):
+        return review.review(conn)
+
+    def _review_body(self, conn, req):
+        body = req.json()
+        ids = [int(i) for i in body.get("ids", [])]
+        cid = body.get("category_id")
+        rule = body.get("rule") if isinstance(body.get("rule"), dict) else None
+        if rule and rule.get("op") == "regex" and rules.validate_pattern("regex", rule.get("pattern")):
+            rule = None
+        return body, ids, cid, rule
+
+    def review_assign(self, conn, req):
+        body, ids, cid, rule = self._review_body(conn, req)
+        if not cid:
+            raise ApiError("Bitte eine Kategorie wählen.")
+        self._check_category(conn, cid)
+        return review.assign(conn, ids, int(cid), rule, body.get("direction", "any"), bool(body.get("learn", True)))
+
+    def review_confirm(self, conn, req):
+        body, ids, cid, rule = self._review_body(conn, req)
+        if cid:
+            self._check_category(conn, cid)
+        return review.confirm(conn, ids, int(cid) if cid else None, rule, body.get("direction", "any"))
+
+    def review_undo(self, conn, req):
+        data = req.json().get("undo") or {}
+        return review.undo(conn, data)
+
+    # ------------------------------------------------------------ Bankanbindung (Enable Banking)
+    def _bank(self, fn, *args, **kw):
+        try:
+            return fn(*args, **kw)
+        except bank.BankError as e:
+            raise ApiError(str(e), HTTPStatus.BAD_GATEWAY if e.status and e.status >= 500 else HTTPStatus.BAD_REQUEST)
+
+    def bank_status(self, conn, req):
+        return bank.status(conn, self.bank_dir)
+
+    def bank_config(self, conn, req):
+        body = req.json()
+        app = self._bank(bank.configure, conn, self.bank_dir, body.get("app_id"), body.get("key_pem"))
+        return {"ok": True, "application": {"name": app.get("name"), "redirect_urls": app.get("redirect_urls") or []},
+                **bank.status(conn, self.bank_dir)}
+
+    def bank_settings(self, conn, req):
+        body = req.json()
+        if "auto" in body:
+            bank._set(conn, "auto", bool(body["auto"]))
+        return bank.status(conn, self.bank_dir)
+
+    def bank_aspsps(self, conn, req):
+        country = (req.query.get("country", ["DE"])[0] or "DE").upper()[:2]
+        return {"aspsps": self._bank(bank.aspsps, conn, self.bank_dir, country)}
+
+    def bank_auth(self, conn, req):
+        body = req.json()
+        if not body.get("aspsp"):
+            raise ApiError("Bitte eine Bank auswählen.")
+        return self._bank(bank.start_auth, conn, self.bank_dir, body["aspsp"], (body.get("country") or "DE").upper(),
+                          body.get("max_days"))
+
+    def bank_session(self, conn, req):
+        res = self._bank(bank.finish_auth, conn, self.bank_dir, req.json().get("url"))
+        res["sync"] = self._bank(bank.sync, conn, self.bank_dir, res["session_id"])
+        return res
+
+    def bank_sync(self, conn, req):
+        return {"results": self._bank(bank.sync, conn, self.bank_dir, req.json().get("session_id"))}
+
+    def bank_disconnect(self, conn, req):
+        sid = req.json().get("session_id")
+        if not sid:
+            raise ApiError("session_id fehlt.")
+        bank.disconnect(conn, self.bank_dir, sid)
+        return bank.status(conn, self.bank_dir)
 
     # ------------------------------------------------------------ Buchungen
     def list_transactions(self, conn, req):
@@ -108,11 +314,16 @@ class App:
         if q.get("q"):
             where.append("(counterparty LIKE ? OR purpose LIKE ? OR booking_text LIKE ? OR note LIKE ?)")
             params += [f"%{q['q']}%"] * 4
+        if q.get("since"):                                  # nur Buchungen, die nach dieser id hinzukamen
+            where.append("id > ?")
+            params.append(int(q["since"]))
         if q.get("direction") == "in":
             where.append("amount > 0")
         elif q.get("direction") == "out":
             where.append("amount < 0")
-        sort = {"date": "date DESC, id DESC", "amount": "amount ASC", "-amount": "amount DESC",
+        # Neueste zuerst; am Gehaltstag steht das Gehalt als erster Eintrag des Monats (also zuunterst des Tages)
+        salary_last = ("(category_id IN (SELECT id FROM categories WHERE lower(name) = 'gehalt') AND amount > 0)")
+        sort = {"date": f"date DESC, {salary_last} ASC, id DESC", "amount": "amount ASC", "-amount": "amount DESC",
                 "counterparty": "counterparty COLLATE NOCASE"}.get(q.get("sort", "date"), "date DESC")
         limit = min(int(q.get("limit", 200)), 5000)
         offset = int(q.get("offset", 0))
@@ -195,12 +406,15 @@ class App:
             raise ApiError("Farbe bitte als #rrggbb angeben.")
         budget = euro_to_cents(body["budget"]) if "budget" in body else current.get("budget")
         sort = int(body.get("sort", current.get("sort", 0)) or 0)
-        return name, parent_id, kind, color, budget, sort
+        fixed = 1 if body.get("fixed", current.get("fixed", 0)) else 0
+        disc = 1 if body.get("disc", current.get("disc", 0)) else 0
+        locked = 1 if body.get("locked", current.get("locked", 0)) else 0
+        return name, parent_id, kind, color, budget, sort, fixed, disc, locked
 
     def create_category(self, conn, req):
         values = self._category_values(conn, req.json())
         cid = conn.execute(
-            "INSERT INTO categories (name, parent_id, kind, color, budget, sort) VALUES (?, ?, ?, ?, ?, ?)", values
+            "INSERT INTO categories (name, parent_id, kind, color, budget, sort, fixed, disc, locked) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", values
         ).lastrowid
         conn.commit()
         return dict(conn.execute("SELECT * FROM categories WHERE id = ?", (cid,)).fetchone())
@@ -211,7 +425,7 @@ class App:
             raise ApiError("Kategorie nicht gefunden.", HTTPStatus.NOT_FOUND)
         values = self._category_values(conn, req.json(), dict(current))
         conn.execute(
-            "UPDATE categories SET name = ?, parent_id = ?, kind = ?, color = ?, budget = ?, sort = ? WHERE id = ?",
+            "UPDATE categories SET name = ?, parent_id = ?, kind = ?, color = ?, budget = ?, sort = ?, fixed = ?, disc = ?, locked = ? WHERE id = ?",
             values + (cid,),
         )
         # Unterkategorien übernehmen Art der Oberkategorie
@@ -298,6 +512,16 @@ class App:
                    if rule.matches(tx)]
         return {"count": len(matches), "sum": sum(tx["amount"] for tx in matches), "items": matches[:15]}
 
+    def transfer_check(self, conn, req):
+        """Kreditkarten-Check: Abrechnungen gegen importierte Kartenumsätze (für die Import-Ansicht)."""
+        report = transfers.reconcile(conn)
+        own = transfers.own_accounts_category(conn)
+        report["card_accounts"] = sorted({r[0] for r in conn.execute("SELECT DISTINCT account FROM transactions")
+                                          if r[0] and transfers.CARD_ACCOUNT.search(r[0])})
+        report["settlements"] = conn.execute(
+            "SELECT COUNT(*) FROM transactions WHERE category_id = ? AND amount < 0", (own,)).fetchone()[0] if own else 0
+        return report
+
     def apply_rules(self, conn, req):
         body = req.json()
         return {"changed": rules.apply_rules(conn, only_uncategorized=bool(body.get("only_uncategorized")))}
@@ -339,6 +563,84 @@ class App:
                              r["parent"] or r["cat"] or "", r["cat"] if r["parent"] else "", r["note"]])
         return RawResponse(out.getvalue().encode("utf-8-sig"), "text/csv; charset=utf-8",
                            {"Content-Disposition": 'attachment; filename="finanzen-export.csv"'})
+
+
+    # ------------------------------------------------------------ Depot & Sparplan
+    def get_depot(self, conn, req):
+        try:
+            created = depot.auto_execute(conn)
+        except Exception:  # eine fehlgeschlagene Automatik darf die Ansicht nie blockieren
+            log.exception("Automatischer Sparplan fehlgeschlagen")
+            created = []
+        return {
+            "auto_created": created,
+            "transactions": [dict(r) for r in conn.execute("SELECT * FROM depot_tx ORDER BY date, id")],
+            "settings": depot.get_settings(conn),
+            "catalog": depot.CATALOG,
+        }
+
+    def update_depot_settings(self, conn, req):
+        try:
+            return depot.save_settings(conn, req.json())
+        except ValueError as e:
+            raise ApiError(str(e))
+
+    def _depot_tx_values(self, body, current=None):
+        merged = {**(current or {}), **body}
+        date = str(merged.get("date", ""))
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+            raise ApiError("Datum bitte als JJJJ-MM-TT angeben.")
+        symbol = str(merged.get("symbol", "")).strip().upper()
+        if not symbol:
+            raise ApiError("Bitte ein Kürzel angeben.")
+        shares = float(str(merged.get("shares", 0)).replace(",", "."))
+        if shares <= 0:
+            raise ApiError("Stückzahl muss größer als 0 sein.")
+        amount = euro_to_cents(body["amount"]) if "amount" in body else (current or {}).get("amount")
+        if not amount or amount <= 0:
+            raise ApiError("Bitte einen Betrag angeben.")
+        return date, symbol, shares, amount, str(merged.get("note", ""))[:200]
+
+    def create_depot_tx(self, conn, req):
+        tid = conn.execute("INSERT INTO depot_tx (date, symbol, shares, amount, note) VALUES (?, ?, ?, ?, ?)",
+                           self._depot_tx_values(req.json())).lastrowid
+        conn.commit()
+        return dict(conn.execute("SELECT * FROM depot_tx WHERE id = ?", (tid,)).fetchone())
+
+    def update_depot_tx(self, conn, req, tid):
+        current = conn.execute("SELECT * FROM depot_tx WHERE id = ?", (tid,)).fetchone()
+        if not current:
+            raise ApiError("Kauf nicht gefunden.", HTTPStatus.NOT_FOUND)
+        # Bearbeiten = bestätigt: die Stückzahl gilt nicht mehr als geschätzt
+        conn.execute("UPDATE depot_tx SET date = ?, symbol = ?, shares = ?, amount = ?, note = ?, estimated = 0 WHERE id = ?",
+                     self._depot_tx_values(req.json(), dict(current)) + (tid,))
+        conn.commit()
+        return dict(conn.execute("SELECT * FROM depot_tx WHERE id = ?", (tid,)).fetchone())
+
+    def delete_depot_tx(self, conn, req, tid):
+        conn.execute("DELETE FROM depot_tx WHERE id = ?", (tid,))
+        conn.commit()
+        return {"deleted": tid}
+
+    def quote_chart(self, conn, req):
+        q = {k: v[0] for k, v in req.query.items()}
+        try:
+            data = depot.chart(conn, q.get("symbol", ""), q.get("range", "1y"), q.get("interval", "1d"),
+                               force=q.get("force") == "1")
+        except depot.QuoteError as e:
+            raise ApiError(str(e), HTTPStatus.BAD_GATEWAY)
+        if q.get("stats") == "1":
+            data["stats"] = depot.stats(data["points"])
+        return data
+
+    def quote_search(self, conn, req):
+        query = req.query.get("q", [""])[0].strip()
+        if len(query) < 2:
+            return []
+        try:
+            return depot.search(query)
+        except depot.QuoteError as e:
+            raise ApiError(str(e), HTTPStatus.BAD_GATEWAY)
 
 
 class RawResponse:

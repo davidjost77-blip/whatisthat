@@ -4,13 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Finanzen</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232a78d6'/><path d='M8 22 L14 15 L18 19 L24 10' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%238a5a24'/><path d='M8 22 L14 15 L18 19 L24 10' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <script>try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; const s = localStorage.getItem("scheme"); if (s === "tinte" || s === "graphit" || s === "salbei") document.documentElement.dataset.scheme = s; const p = localStorage.getItem("pair"); if (p === "petrol" || p === "salbei") document.documentElement.dataset.pair = p; } catch (e) {}</script>
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--series-1)"/><path d="M8 22 L14 15 L18 19 L24 10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><defs><linearGradient id="brandgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#b07a3c"/><stop offset="1" stop-color="#71481a"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="url(#brandgrad)"/><path d="M8 22 L14 15 L18 19 L24 10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span>Finanzen</span>
     </div>
     <nav class="tabs" role="tablist">
@@ -18,12 +19,20 @@
       <button role="tab" data-view="transactions">Umsätze <span class="badge" id="uncat-badge" hidden></span></button>
       <button role="tab" data-view="categories">Kategorien &amp; Regeln</button>
       <button role="tab" data-view="import">Import</button>
+      <a class="tab" href="sparplan.html">Sparplan</a>
     </nav>
     <div class="topbar-status" id="sync-status"></div>
   </header>
 
-  <!-- Eine Filterzeile für alles, was sie betrifft (Dashboard + Umsätze) -->
-  <section class="filterbar" id="filterbar">
+  <!-- Pfad: hält den Kontext sichtbar (DESIGN.md §2) -->
+  <div class="crumbbar"><nav class="crumbs" id="crumbs" aria-label="Pfad"></nav><span class="context" id="context"></span></div>
+
+  <!-- Filterzeile nur für die Umsätze (Tiefe) -->
+  <section class="filterbar" id="filterbar" hidden>
+    <div class="seg month-step" role="group" aria-label="Monat wechseln">
+      <button type="button" id="month-prev" title="Einen Gehaltsmonat zurück">‹ Monat zurück</button>
+      <button type="button" id="month-next" title="Einen Gehaltsmonat vor">Monat vor ›</button>
+    </div>
     <div class="seg" id="period-presets" role="group" aria-label="Zeitraum">
       <button data-period="month">Dieser Monat</button>
       <button data-period="lastmonth">Letzter Monat</button>
@@ -45,51 +54,54 @@
     <!-- ============================ DASHBOARD ============================ -->
     <section class="view" id="view-dashboard">
       <div class="empty-state" id="dash-empty" hidden>
-        <h2>Noch keine Buchungen</h2>
+        <h2>Noch keine Buchungen im Zeitraum</h2>
         <p>Importiere einen CSV-Export deiner Banking-App – per Drag &amp; Drop unter <a href="#import">Import</a>
           oder indem du die Datei in den Inbox-Ordner legst.</p>
-        <p class="muted">Zum Ausprobieren: <code>python scripts/demo_daten.py inbox</code></p>
       </div>
       <div id="dash-content">
+        <!-- 1 · Kennzahlen -->
+        <div class="review-bar" id="review-bar" hidden></div>
         <div class="kpis" id="kpis"></div>
+        <!-- 2 · Geldfluss im Zentrum -->
+        <article class="card flow-card" data-card="flow">
+          <header><div><h3>Geldfluss</h3><p id="flow-sub"></p></div>
+            <div class="flow-controls">
+              <label class="switch" title="Rücklagen einrechnen: ein Plus aus dem Vormonat fließt links blau zu, ein Minus in diesem Monat wird „Aus Erspartem“ ausgeglichen"><input type="checkbox" id="carry-toggle" checked><span></span>Rücklagen</label>
+              <label class="muted" style="font-size:12.5px">Farben <select id="pair-select" aria-label="Farbpaar Einnahmen/Ausgaben">
+                <option value="blau">Blau / Rot</option><option value="petrol">Petrol / Koralle</option><option value="salbei">Salbei / Terrakotta</option></select></label>
+            </div></header>
+          <div class="flow" id="flow"></div>
+          <div class="flow-legend" id="flow-legend"></div>
+          <div id="balance-prompt" hidden></div>
+        </article>
         <div class="grid">
-          <article class="card span-8" data-card="monthly">
-            <header><div><h3>Einnahmen &amp; Ausgaben</h3><p>pro Monat · Klick auf einen Monat zeigt die Umsätze</p></div></header>
-            <div class="chart" style="height:320px"></div>
+          <!-- 3 · Budgets und Depot -->
+          <article class="card span-8" data-card="budgets">
+            <header><div><h3>Kategorien gegen Soll</h3><p id="budget-sub"></p></div>
+              <button class="zoom-btn" type="button" data-zoom="kategorien" title="Im Vollbild öffnen" aria-label="Kategorien im Vollbild öffnen">⤢</button></header>
+            <div class="budgets" id="budgets"></div>
           </article>
-          <article class="card span-4" data-card="categories">
-            <header><div><h3>Ausgaben nach Kategorie</h3><p>Anteil am Gesamtbetrag · Klick filtert Umsätze</p></div></header>
-            <div class="chart" style="height:320px"></div>
+          <article class="card span-4" data-card="depot">
+            <header><div><h3>Depot &amp; Sparplan</h3><p>Wert gegen Einzahlungen</p></div></header>
+            <div id="depot-mini"></div>
           </article>
-          <article class="card span-12" data-card="sankey">
-            <header><div><h3>Geldfluss</h3><p>Woher das Geld kommt und wohin es geht</p></div></header>
-            <div class="chart" style="height:420px"></div>
+          <!-- 4 · Verlauf -->
+          <article class="card span-12" data-card="monthly">
+            <header><div><h3>Einnahmen &amp; Ausgaben pro Monat</h3><p id="monthly-sub"></p></div>
+              <button class="zoom-btn" type="button" data-zoom="ausgaben" title="Ausgaben im Vollbild" aria-label="Ausgaben im Vollbild öffnen">⤢</button></header>
+            <div class="chart" id="chart-monthly" style="height:300px"></div>
           </article>
-          <article class="card span-8" data-card="stacked">
-            <header><div><h3>Kategorien im Zeitverlauf</h3><p>Monatliche Ausgaben, die größten 7 Kategorien</p></div></header>
-            <div class="chart" style="height:340px"></div>
-          </article>
-          <article class="card span-4" data-card="budgets">
-            <header><div><h3>Budgets</h3><p id="budget-sub">Verbrauch im Zeitraum</p></div></header>
-            <div class="budgets"></div>
-          </article>
-          <article class="card span-6" data-card="balance">
-            <header><div><h3>Kontostand-Verlauf</h3><p>Kumulierte Buchungen seit dem ersten Import</p></div></header>
-            <div class="chart" style="height:300px"></div>
+          <!-- 5 · Details -->
+          <article class="card span-6" data-card="largest">
+            <header><div><h3>Größte Ausgaben</h3><p>Einzelbuchungen im Zeitraum</p></div></header>
+            <div class="largest" id="largest"></div>
           </article>
           <article class="card span-6" data-card="partners">
-            <header><div><h3>Top-Empfänger</h3><p>Wohin am meisten Geld fließt</p></div></header>
-            <div class="chart" style="height:300px"></div>
-          </article>
-          <article class="card span-8" data-card="calendar">
-            <header><div><h3>Ausgaben-Kalender</h3><p>Summe der Ausgaben pro Tag</p></div></header>
-            <div class="chart" style="height:250px"></div>
-          </article>
-          <article class="card span-4" data-card="largest">
-            <header><div><h3>Größte Ausgaben</h3><p>Einzelbuchungen im Zeitraum</p></div></header>
-            <div class="largest"></div>
+            <header><div><h3>Top-Empfänger</h3><p>Wohin im Zeitraum am meisten Geld floss</p></div></header>
+            <div class="partners" id="partners"></div>
           </article>
         </div>
+        <p class="blick-foot muted">⤢ öffnet eine Karte im Vollbild, <kbd>Esc</kbd> schließt es wieder.</p>
       </div>
     </section>
 
@@ -145,6 +157,19 @@
 
     <!-- ======================= KATEGORIEN & REGELN ======================= -->
     <section class="view" id="view-categories" hidden>
+      <div class="panel plan-panel" id="plan-panel">
+        <div class="panel-head">
+          <div><h2>Monatsplan: Sparziel und Budgets</h2><p class="muted">Ein Gesamtziel pro Monat. Der Ausgabenrahmen (Ø Einkommen − Sparziel) verteilt sich auf die Kategorien.
+            Verschiebst du das Ziel, passen sich alle nicht gesperrten Budgets im Verhältnis an; verschiebst du ein Budget, gleichen die übrigen nicht gesperrten es aus.
+            „Steuerbar“ = Ausgaben, die du direkt beeinflussen kannst – sie erscheinen im Geldfluss im tieferen Ton.</p></div>
+          <span class="muted" id="plan-saved" aria-live="polite"></span>
+        </div>
+        <div class="plan-top">
+          <label>Sparziel pro Monat: <b id="plan-goal-v"></b><input type="range" id="plan-goal" min="0" max="60" step="1" aria-label="Sparziel in Prozent des Einkommens"></label>
+          <div class="plan-frame"><div class="muted">Ausgabenrahmen pro Monat</div><div class="v" id="plan-frame"></div><div class="muted" id="plan-frame-s"></div></div>
+        </div>
+        <div class="scroll-x"><table class="plan-table depth-table" id="plan-table"></table></div>
+      </div>
       <div class="two-col">
         <div class="panel">
           <div class="panel-head">
@@ -170,7 +195,8 @@
     <section class="view" id="view-import" hidden>
       <div class="two-col">
         <div class="panel">
-          <h2>Datei importieren</h2>
+          <section class="bank" id="bank" aria-live="polite"></section>
+          <h2 class="mt">Datei importieren</h2>
           <label class="dropzone" id="dropzone">
             <input type="file" id="file-input" accept=".csv,.txt,.tsv" multiple hidden>
             <strong>CSV-Export hierher ziehen</strong>
@@ -189,7 +215,19 @@
           <p><a class="button" href="/api/export.csv">Alle Buchungen als CSV (Excel)</a></p>
         </div>
         <div class="panel">
-          <h2>Import-Verlauf</h2>
+          <h2>Kontostände</h2>
+          <p class="muted">Damit der Geldfluss bei eingeschalteten Rücklagen deinen echten Kontostand zeigt. Einmal eintragen genügt –
+            mit Bankanbindung oder DKB-Export kommt er automatisch.</p>
+          <div id="balances"></div>
+          <h2 class="mt">Doppelte Buchungen</h2>
+          <p class="muted">Überlappende Exporte werden beim Import abgeglichen: je Konto, Tag und Betrag kommt nur dazu, was noch fehlt.
+            Doppelte aus früheren Importen findest du hier.</p>
+          <div id="duplicates"></div>
+          <h2 class="mt">Kreditkarten-Check</h2>
+          <p class="muted">Läuft nach jedem Import und Bankabruf automatisch: Kreditkartenabrechnungen vom Girokonto werden mit den
+            importierten Kartenumsätzen abgeglichen, damit kein Kauf doppelt zählt – und keiner verschwindet, wenn die Karte nicht importiert ist.</p>
+          <div id="transfer-check"></div>
+          <h2 class="mt">Import-Verlauf</h2>
           <div id="import-history"></div>
         </div>
       </div>
@@ -209,7 +247,7 @@
           <option value="transfer">Umbuchung (zählt weder als Einnahme noch als Ausgabe)</option>
         </select>
       </label>
-      <fieldset class="swatches"><legend>Farbe</legend><div id="swatches"></div></fieldset>
+      <label class="inline"><input type="checkbox" name="fixed"> Fixkosten (Maßstab für „Monate Fixkosten“)</label>
       <label>Monatsbudget in € <input name="budget" type="number" min="0" step="1" placeholder="optional"></label>
       <p class="form-error" id="cat-error"></p>
       <div class="dialog-actions">
@@ -267,6 +305,12 @@
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
   <script src="vendor/echarts.min.js"></script>
+  <script src="vendor/motion.js"></script>
+  <script src="ui-core.js"></script>
+  <script src="flow.js"></script>
+  <script src="lake-flow.js"></script>
   <script src="app.js"></script>
+  <script src="bank-ui.js"></script>
+  <script src="review-ui.js"></script>
 </body>
 </html>

@@ -8,3 +8,4 @@ profiles.json
 *.db
 *.db-wal
 *.db-shm
+*.log

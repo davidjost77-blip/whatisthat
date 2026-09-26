@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS categories (
     kind        TEXT NOT NULL DEFAULT 'expense' CHECK (kind IN ('expense', 'income', 'transfer')),
     color       TEXT,
     budget      INTEGER,            -- Monatsbudget in Cent (optional)
+    fixed       INTEGER NOT NULL DEFAULT 0,  -- 1 = Fixkosten (Maßstab für Alltagsäquivalente)
+    disc        INTEGER NOT NULL DEFAULT 0,  -- 1 = steuerbar (durch Gewohnheiten kürzbar: Freizeit, Shopping …)
+    locked      INTEGER NOT NULL DEFAULT 0,  -- 1 = Budget im Monatsplan gesperrt (wandert beim Verschieben nicht mit)
     sort        INTEGER NOT NULL DEFAULT 0
 );
 
@@ -140,16 +143,42 @@ def connect(path):
     return conn
 
 
+from .balances import SCHEMA as BALANCES_SCHEMA  # noqa: E402  (Kontostände)
+
+
 def init_db(path, seed=True):
     conn = connect(path)
     conn.executescript(SCHEMA)
+    conn.executescript(BALANCES_SCHEMA)
+    migrate(conn)
     if seed and conn.execute("SELECT COUNT(*) FROM categories").fetchone()[0] == 0:
         seed_defaults(conn)
     conn.commit()
     conn.close()
 
 
+# Kategorien, die als Fixkosten zählen (Unterkategorien erben das Merkmal)
+DEFAULT_FIXED = {"Wohnen", "Versicherungen", "Abos & Streaming", "Kredite & Raten"}
+
+# steuerbar: durch Gewohnheiten kürzbar – tieferer Farbton im Geldfluss (Unterkategorien erben das Merkmal)
+DEFAULT_DISC = {"Freizeit", "Shopping"}
+
 DEFAULT_BUDGETS = {"Lebensmittel": 550, "Freizeit": 450, "Shopping": 300, "Mobilität": 300}
+
+
+def migrate(conn):
+    """Ältere Datenbanken auf den aktuellen Stand bringen."""
+    columns = {r[1] for r in conn.execute("PRAGMA table_info(categories)")}
+    if "fixed" not in columns:
+        conn.execute("ALTER TABLE categories ADD COLUMN fixed INTEGER NOT NULL DEFAULT 0")
+        conn.execute(f"UPDATE categories SET fixed = 1 WHERE name IN ({','.join('?' * len(DEFAULT_FIXED))})",
+                     sorted(DEFAULT_FIXED))
+    if "disc" not in columns:
+        conn.execute("ALTER TABLE categories ADD COLUMN disc INTEGER NOT NULL DEFAULT 0")
+        conn.execute(f"UPDATE categories SET disc = 1 WHERE name IN ({','.join('?' * len(DEFAULT_DISC))})", sorted(DEFAULT_DISC))
+    if "locked" not in columns:
+        conn.execute("ALTER TABLE categories ADD COLUMN locked INTEGER NOT NULL DEFAULT 0")
+        conn.execute("UPDATE categories SET locked = 1 WHERE fixed = 1")
 
 
 def seed_defaults(conn):
@@ -161,14 +190,15 @@ def seed_defaults(conn):
             color = PALETTE[color_slot % len(PALETTE)]
             color_slot += 1
         parent_id = conn.execute(
-            "INSERT INTO categories (name, kind, color, budget, sort) VALUES (?, ?, ?, ?, ?)",
-            (name, kind, color, DEFAULT_BUDGETS[name] * 100 if name in DEFAULT_BUDGETS else None, sort),
+            "INSERT INTO categories (name, kind, color, budget, sort, fixed, disc, locked) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (name, kind, color, DEFAULT_BUDGETS[name] * 100 if name in DEFAULT_BUDGETS else None, sort,
+             int(name in DEFAULT_FIXED), int(name in DEFAULT_DISC), int(name in DEFAULT_FIXED)),
         ).lastrowid
         ids = {}
         for child_sort, child in enumerate(children):
             ids[child] = conn.execute(
-                "INSERT INTO categories (name, parent_id, kind, color, sort) VALUES (?, ?, ?, ?, ?)",
-                (child, parent_id, kind, color, child_sort),
+                "INSERT INTO categories (name, parent_id, kind, color, sort, fixed) VALUES (?, ?, ?, ?, ?, ?)",
+                (child, parent_id, kind, color, child_sort, int(child in DEFAULT_FIXED)),
             ).lastrowid
         for child, field, pattern, direction, *priority in rules:
             conn.execute(
