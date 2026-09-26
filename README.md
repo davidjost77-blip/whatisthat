@@ -90,9 +90,13 @@ Wichtige Parameter von `Watch-BankExports.ps1`:
 
 Falls PowerShell die Skripte blockiert: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 
-**Überlappende Exporte sind kein Problem.** Jede Buchung bekommt einen Fingerabdruck aus Konto, Datum, Betrag,
-Gegenpartei und Verwendungszweck, und Duplikate werden übersprungen. Du kannst also z. B. jede Woche „die letzten 90 Tage“
-exportieren. Vorgemerkte Buchungen (Status *vorgemerkt/pending*) werden ignoriert und erst übernommen, wenn sie gebucht sind.
+**Überlappende Exporte sind kein Problem.** Beim Import zählt die App je Konto, Tag und Betrag, wie viele Buchungen
+schon da sind, und übernimmt aus der Datei nur die fehlenden – auch wenn sich die Schreibweise zwischen zwei Exporten
+geändert hat (neues Exportformat, gekürzter Verwendungszweck). Zwei echte gleiche Käufe am selben Tag bleiben erhalten.
+Heißt ein Konto im Export anders als bisher (z. B. Dateiname statt IBAN), deckt sich aber mit einem vorhandenen, wird es
+diesem zugeordnet. Du kannst also z. B. jede Woche „die letzten 90 Tage“ exportieren. Doppelte aus früheren Importen
+findest und entfernst du unter *Import › Doppelte Buchungen* (rückgängig machbar). Vorgemerkte Buchungen (Status
+*vorgemerkt/pending*) werden ignoriert und erst übernommen, wenn sie gebucht sind.
 
 ## Unterstützte Formate
 

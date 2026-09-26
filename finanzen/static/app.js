@@ -1510,7 +1510,7 @@ async function uploadFiles(files) {
   for (const file of files) {
     try {
       const res = await api("POST", "/api/import", await file.arrayBuffer(), { "X-Filename": encodeURIComponent(file.name), "Content-Type": "text/csv" });
-      box.insertAdjacentHTML("afterbegin", `<div class="result ok"><b>${esc(file.name)}</b>: ${res.rows_new} neue Buchungen, ${res.rows_duplicate} bereits vorhanden
+      box.insertAdjacentHTML("afterbegin", `<div class="result ok"><b>${esc(file.name)}</b>: ${res.rows_new} neue Buchungen, ${res.rows_duplicate} bereits vorhanden${res.account_renamed_from ? ` · Konto „${esc(res.account_renamed_from)}“ als „${esc(res.account)}“ erkannt` : ""}
         <div class="muted">${dateDe(res.date_from)} – ${dateDe(res.date_to)} · Konto ${esc(res.account)} · Spalten: ${esc(Object.values(res.columns).join(", "))}</div></div>`);
     } catch (e) {
       box.insertAdjacentHTML("afterbegin", `<div class="result err">${esc(e.message)}</div>`);
@@ -1523,6 +1523,7 @@ async function uploadFiles(files) {
 async function loadImportView() {
   window.BankUI?.render();
   renderBalances();
+  renderDuplicates();
   renderTransferCheck();
   $("#inbox-path").textContent = state.status?.inbox || "(Überwachung deaktiviert)";
   const rows = await api("GET", "/api/imports");
@@ -1560,6 +1561,31 @@ async function renderBalances() {
     toast(`Kontostand für ${f.dataset.account} gespeichert`);
     renderBalances();
   }));
+}
+
+/** Doppelte aus früheren, überlappenden Importen: anzeigen und mit einem Klick entfernen (rückgängig machbar). */
+async function renderDuplicates() {
+  const box = $("#duplicates");
+  let r;
+  try { r = await api("GET", "/api/duplicates"); } catch { box.innerHTML = ""; return; }
+  if (!r.count) { box.innerHTML = `<p class="check-list">✓ Keine doppelten Buchungen gefunden.</p>`; return; }
+  const row = (t) => `${esc(t.counterparty || t.purpose || "–")} <span class="muted">· ${esc(t.account)}</span>`;
+  box.innerHTML = `<p><b class="sig-bad">⚠ ${r.count} doppelte Buchung${r.count === 1 ? "" : "en"}</b> (${money(r.sum)}) –
+      ${Object.entries(r.reasons).map(([k, n]) => `${n}× ${esc(k)}`).join(" · ")}</p>
+    <div class="scroll-x"><table class="depth-table dup-table"><thead><tr><th>Datum</th><th class="num">Betrag</th><th>bleibt</th><th>wird entfernt</th></tr></thead><tbody>
+    ${r.items.slice(0, 12).map((p) => `<tr><td>${dateDe(p.keep.date)}</td><td class="num">${money(p.keep.amount)}</td><td>${row(p.keep)}</td><td>${row(p.drop)}</td></tr>`).join("")}
+    </tbody></table></div>${r.count > 12 ? `<p class="muted">… und ${r.count - 12} weitere</p>` : ""}
+    <button type="button" class="primary" id="dup-remove">${r.count} Doppelte entfernen</button>`;
+  $("#dup-remove").onclick = async () => {
+    const res = await api("POST", "/api/duplicates/remove");
+    toast(`${res.removed} doppelte Buchungen entfernt`, { action: { label: "Rückgängig", run: async () => {
+      await api("POST", "/api/duplicates/restore", { rows: res.undo });
+      toast("Wiederhergestellt");
+      await loadStatus(); loadImportView();
+    } } });
+    await loadStatus();
+    loadImportView();
+  };
 }
 
 /** Kreditkarten-Check: Ergebnis des automatischen Abgleichs, mit Sprung zu den betroffenen Buchungen. */

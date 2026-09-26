@@ -1,6 +1,7 @@
 """Import in die Datenbank und Überwachung des Inbox-Ordners."""
 
 import logging
+from collections import Counter, defaultdict
 import shutil
 import threading
 import time
@@ -14,9 +15,59 @@ log = logging.getLogger("finanzen.ingest")
 SUPPORTED_SUFFIXES = {".csv", ".txt", ".tsv"}
 
 
+def _same_account(conn, transactions, name):
+    """Heißt das Konto im Export anders als bisher (z. B. Dateiname statt IBAN), aber die Buchungen decken sich
+    größtenteils mit einem vorhandenen Konto, ist es dasselbe Konto."""
+    if conn.execute("SELECT 1 FROM transactions WHERE account = ? LIMIT 1", (name,)).fetchone():
+        return name
+    best, best_hits = None, 0
+    for (acc, first, last) in conn.execute("SELECT account, MIN(date), MAX(date) FROM transactions GROUP BY account"):
+        inside = [t for t in transactions if first <= t["date"] <= last]
+        if len(inside) < 3:
+            continue
+        have = Counter((r[0], r[1]) for r in conn.execute(
+            "SELECT date, amount FROM transactions WHERE account = ? AND date BETWEEN ? AND ?", (acc, first, last)))
+        hits = sum(min(n, have[k]) for k, n in Counter((t["date"], t["amount"]) for t in inside).items())
+        if hits >= 3 and hits >= 0.6 * len(inside) and hits > best_hits:
+            best, best_hits = acc, hits
+    return best or name
+
+
+def only_new(conn, transactions):
+    """Nur der Teil eines Exports, der noch nicht in der Datenbank ist.
+
+    Je Konto, Tag und Betrag zählt, wie viele Buchungen schon da sind; aus der Datei kommen nur die überzähligen
+    dazu. So entstehen keine Doppelten, auch wenn sich Schreibweisen zwischen zwei Exporten ändern (neues
+    Exportformat, gekürzter Verwendungszweck …) – und zwei echte gleiche Käufe am selben Tag bleiben erhalten.
+    Bevorzugt übernommen werden die Zeilen, deren Fingerabdruck und Empfänger noch nicht vorkommen.
+    """
+    groups = defaultdict(list)
+    for tx in transactions:
+        groups[(tx["account"], tx["date"], tx["amount"])].append(tx)
+    fresh = []
+    for (acc, day, amount), rows in groups.items():
+        have = [dict(r) for r in conn.execute(
+            "SELECT hash, counterparty FROM transactions WHERE account = ? AND date = ? AND amount = ?", (acc, day, amount))]
+        n_new = len(rows) - len(have)
+        if n_new <= 0:
+            continue
+        hashes = {h["hash"] for h in have}
+        words = {w for h in have for w in importer._tokens(h["counterparty"] or "")}
+        rows.sort(key=lambda t: (t["hash"] in hashes, len(words & set(importer._tokens(t["counterparty"])))))
+        fresh.extend(rows[:n_new])
+    return fresh
+
+
 def import_bytes(conn, data, filename, profiles=(), account=None):
-    """Parst eine Datei, speichert neue Buchungen und kategorisiert sie. Gibt eine Zusammenfassung zurück."""
+    """Parst eine Datei, speichert nur die noch nicht vorhandenen Buchungen und kategorisiert sie."""
     transactions, info = importer.parse_file(data, filename, profiles, account)
+    mapped = _same_account(conn, transactions, info["account"]) if not account else info["account"]
+    if mapped != info["account"]:
+        for tx in transactions:
+            if tx["account"] == info["account"]:
+                tx["account"] = mapped
+        info["account_renamed_from"], info["account"] = info["account"], mapped
+    fresh = {id(t) for t in only_new(conn, transactions)}
     compiled = rules.load_rules(conn)
     cur = conn.execute(
         "INSERT INTO imports (filename, profile, account) VALUES (?, ?, ?)",
@@ -25,6 +76,8 @@ def import_bytes(conn, data, filename, profiles=(), account=None):
     import_id = cur.lastrowid
     new = 0
     for tx in transactions:
+        if id(tx) not in fresh:
+            continue
         tx["category_id"] = rules.categorize(tx, compiled)
         cur = conn.execute(
             """INSERT OR IGNORE INTO transactions

@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import analytics, balances, bank, cycles, db, depot, importer, ingest, review, rules, transfers
+from . import analytics, balances, bank, cycles, db, depot, duplicates, importer, ingest, review, rules, transfers
 
 log = logging.getLogger("finanzen.server")
 STATIC_DIR = Path(__file__).parent / "static"
@@ -70,6 +70,9 @@ class App:
             ("POST", r"/api/rules/apply", self.apply_rules),
             ("GET", r"/api/transfers", self.transfer_check),
             ("GET", r"/api/balances", self.list_balances),
+            ("GET", r"/api/duplicates", self.list_duplicates),
+            ("POST", r"/api/duplicates/remove", self.remove_duplicates),
+            ("POST", r"/api/duplicates/restore", self.restore_duplicates),
             ("PUT", r"/api/balances", self.set_balance),
             ("POST", r"/api/import", self.import_file),
             ("GET", r"/api/imports", self.list_imports),
@@ -148,6 +151,15 @@ class App:
                                            "known": [k["account"] for k in end["known"]], "cards": [c["account"] for c in end["cards"]],
                                            "missing": end["missing"]}
         return data
+
+    def list_duplicates(self, conn, req):
+        return duplicates.summary(conn)
+
+    def remove_duplicates(self, conn, req):
+        return duplicates.remove(conn)
+
+    def restore_duplicates(self, conn, req):
+        return duplicates.restore(conn, req.json().get("rows") or [])
 
     def list_balances(self, conn, req):
         return balances.overview(conn)
