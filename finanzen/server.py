@@ -148,8 +148,8 @@ class App:
                 end_day = min(rng["to"], date.today().isoformat())
                 start, end = balances.balance_at(conn, start_day, accs), balances.balance_at(conn, end_day, accs)
                 data["account_balance"] = {"start": start["value"], "start_date": start_day, "end": end["value"], "end_date": end_day,
-                                           "known": [k["account"] for k in end["known"]], "cards": [c["account"] for c in end["cards"]],
-                                           "missing": end["missing"]}
+                                           "known": [k["account"] for k in end["known"]], "cards": end["cards"],
+                                           "missing": end["missing"], "explain": {"start": start["known"], "end": end["known"]}}
         return data
 
     def list_duplicates(self, conn, req):

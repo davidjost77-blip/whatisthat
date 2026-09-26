@@ -175,8 +175,8 @@ Entworfen und abgestimmt im Claude-Design-Canvas (Variante „Final“).
   gegengerechnet (Stand 11: kein Abfluss „Ausgleich Minus“ mehr). Geht im Zeitraum mehr raus als reinkommt, gleicht
   bei eingeschalteten Rücklagen links ein grauer Zufluss **„Aus Erspartem“** (vom Kontostand) aus; ausgeschaltet
   zeigt der See das Minus offen (Stand 12).
-- **Kontostand** (Stand 13): Ist er bekannt (Anker aus Bank, CSV oder von Hand; Kreditkarten ohne Anker zählen nur
-  offene Käufe), zeigen See und Kennzahl bei eingeschalteten Rücklagen den **Kontostand am Ende des Zeitraums**
+- **Kontostand** (Stand 13): Ist er bekannt (Anker aus Bank, CSV oder von Hand; Kreditkarten zählen nicht – sie stehen nach
+  der Abrechnung auf null), zeigen See und Kennzahl bei eingeschalteten Rücklagen den **Kontostand am Ende des Zeitraums**
   (im laufenden Monat den erwarteten). „Aus Erspartem“ gleicht nur so weit aus, wie Geld da war; der Rest fließt als
   roter Zufluss „Konto im Minus“ zu. Seefarbe nach dem erwarteten Kontostand: blau, solange genug drauf ist, je näher
   an null desto röter, rot im Minus. Der Übertrag-Strom entfällt dann (er steckt im Kontostand). Ohne vollständige Daten im Vergleichszeitraum kein Übertrag (mit Hinweis).

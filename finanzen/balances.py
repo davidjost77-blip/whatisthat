@@ -4,11 +4,14 @@ Anker kommen aus der Bankanbindung (bei jedem Abruf), aus CSV-Exporten („Konto
 werden einmal von Hand eingetragen. Formel: Stand(Tag) = Anker + Summe(Buchungen bis Tag) − Summe(Buchungen bis Ankertag).
 Später importierte Buchungen vor dem Ankertag verschieben beide Summen gleich – der Anker bleibt richtig.
 
-Kreditkarten brauchen keinen Anker: Sie werden über die Abrechnung auf null gestellt. Ohne Anker zählt ihr offener
-Betrag (Käufe seit der letzten Abrechnung) aus den importierten Kartenumsätzen.
+Kreditkarten brauchen keinen Anker und zählen nicht zum Kontostand: Sie werden über die Abrechnung vom Girokonto
+auf null gestellt – der Kontostand ist, was die Bank für das Konto zeigt. (Früher wurde der „offene Betrag“ aus allen
+Kartenumsätzen addiert; fehlten im Kartenexport Abrechnungszeilen, lief das über Monate ins Minus.)
 """
 
 from datetime import date
+
+from . import cycles
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS balances (
@@ -62,15 +65,18 @@ def balance_at(conn, day, accounts=None):
     for acc in names:
         a = anc.get(acc)
         if a:
-            v = a["amount"] + _sum_until(conn, acc, day) - _sum_until(conn, acc, a["date"])
-            res["known"].append({"account": acc, "value": v})
+            between = _sum_until(conn, acc, day) - _sum_until(conn, acc, a["date"])
+            v = a["amount"] + between
+            n = conn.execute("SELECT COUNT(*) FROM transactions WHERE account = ? AND date > ? AND date <= ?",
+                             (acc, min(day, a["date"]), max(day, a["date"]))).fetchone()[0]
+            # Rechenweg: Stand am Ankertag ± Buchungen dazwischen
+            res["known"].append({"account": acc, "value": v, "anchor": a["amount"], "anchor_date": a["date"],
+                                 "source": a["source"], "between": between, "bookings": n})
+            res["value"] += v
         elif _is_card(acc):
-            v = min(0, _sum_until(conn, acc, day))          # offene Kartenumsätze bis zur nächsten Abrechnung
-            res["cards"].append({"account": acc, "value": v})
+            res["cards"].append(acc)                         # Kreditkarte: steht nach der Abrechnung auf null
         else:
             res["missing"].append(acc)
-            continue
-        res["value"] += v
     return res
 
 
@@ -86,7 +92,18 @@ def overview(conn):
         a = anc.get(acc)
         day = max(today, r["last"])
         cur = (a["amount"] + _sum_until(conn, acc, day) - _sum_until(conn, acc, a["date"])) if a else None
-        out.append({"account": acc, "card": _is_card(acc), "anchor": a, "current": cur,
-                    "open": min(0, _sum_until(conn, acc, day)) if _is_card(acc) and not a else None,
+        history = []
+        if a:                                                # zurückgerechnet: Stand am Ende der letzten Gehaltsmonate
+            cy = cycles.load(conn)
+            first = conn.execute("SELECT MIN(date) FROM transactions WHERE account = ?", (acc,)).fetchone()[0]
+            k = cy.key_of(r["last"])
+            for _ in range(6):
+                k = cycles._add_month(k, -1)
+                end = cy.range_of(k)[1]
+                if end < first:
+                    break
+                history.append({"month": k, "date": end,
+                                "value": a["amount"] + _sum_until(conn, acc, end) - _sum_until(conn, acc, a["date"])})
+        out.append({"account": acc, "card": _is_card(acc), "anchor": a, "current": cur, "history": history,
                     "last_booking": r["last"], "count": r["n"]})
     return out

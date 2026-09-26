@@ -41,12 +41,14 @@ class BalanceTests(unittest.TestCase):
         self.assertEqual(balances.balance_at(self.conn, "2026-09-26")["value"], 424835)
         self.assertEqual(balances.balance_at(self.conn, "2026-09-09")["value"], 424835 - 300000 + 500)
 
-    def test_card_without_anchor_counts_open_purchases(self):
+    def test_card_does_not_change_account_balance(self):
         balances.set_anchor(self.conn, "girokonto", "2026-09-26", 424835)
-        ingest.import_bytes(self.conn, CARD.encode(), "visa-kreditkarte.csv")
+        ingest.import_bytes(self.conn, CARD.encode(), "visa-kreditkarte.csv")    # Kartenexport ohne Abrechnungszeilen
         res = balances.balance_at(self.conn, "2026-09-26")
-        self.assertEqual(res["value"], 424835 - 10000)
-        self.assertEqual([c["account"] for c in res["cards"]], ["visa kreditkarte"])
+        self.assertEqual(res["value"], 424835)
+        self.assertEqual(res["cards"], ["visa kreditkarte"])
+        back = balances.balance_at(self.conn, "2026-08-24")["known"][0]            # Rechenweg
+        self.assertEqual((back["anchor"], back["between"], back["bookings"], back["value"]), (424835, -500000, 3, -75165))
         self.assertEqual(res["missing"], [])
 
     def test_balance_from_csv_preamble(self):

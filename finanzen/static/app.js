@@ -763,10 +763,23 @@ function expectedNet(d, net, saving, plan = planStatus(d)) {
 }
 /** „429 € unter Plan“ / „37 € über Plan“ – Vorzeichen sind hier missverständlich. */
 const planWord = (v) => `${UI.money0(Math.abs(v))} ${v >= 0 ? "unter" : "über"} Plan`;
+/** Rechenweg eines Kontostands: „4.248 € am 26.09. (von dir) − 1.981 € aus 57 Buchungen = 2.267 €“ je Konto. */
+function balanceWay(list, day) {
+  const SRC = { manuell: "von dir eingetragen", bank: "von der Bank", csv: "aus dem Export" };
+  return (list || []).map((k) => {
+    const back = day < k.anchor_date;
+    const from = back ? plusDays(day, 1) : plusDays(k.anchor_date, 1), to = back ? k.anchor_date : day;
+    const saldo = back ? -k.between : k.between;                   // Saldo der Buchungen zwischen den beiden Tagen
+    return `${esc(k.account)}: ${money(k.anchor)} am ${dateDe(k.anchor_date)} (${SRC[k.source] || k.source})` +
+      (k.bookings ? ` ${back ? "minus" : "plus"} Saldo der ${k.bookings} Buchungen ${dateDe(from).slice(0, 6)}–${dateDe(to).slice(0, 6)} (${UI.signed(saldo, money)})` : "") +
+      ` = <b>${money(k.value)}</b> am ${dateDe(day)}`;
+  }).join("<br>");
+}
 /** Rücklagen an + Kontostand bekannt: See und Kennzahl zeigen den echten Kontostand statt nur das Monatsergebnis. */
 const balanceOf = (d) => (PREFS.carry && d.account_balance ? {
   start: eurOf(d.account_balance.start), end: eurOf(d.account_balance.end),
   startDate: d.account_balance.start_date, endDate: d.account_balance.end_date, missing: d.account_balance.missing,
+  explain: d.account_balance.explain,
 } : null);
 // Rücklagen ohne bekannten Kontostand: nur das Plus aus dem Vergleichszeitraum fließt links zu
 const carryOf = (d) => { const c = carryInfo(d); return PREFS.carry && !d.account_balance && c?.complete && c.value > 0 ? c : null; };
@@ -910,6 +923,7 @@ function renderFlow(d) {
     ${carry ? `<span><i style="background:var(--carry-pos)"></i>Übertrag</span>` : ""}
     <span class="muted">${bal ? `See: ${plan.progress < 1 ? "erwarteter " : ""}Kontostand zum Ende – Einnahmenfarbe, solange genug drauf ist; je näher an null desto röter; Ausgabenfarbe = Konto im Minus`
       : `See: ${plan.progress < 1 ? "erwartetes Ergebnis zum Ende" : "Ergebnis"}${carry ? " inkl. Übertrag" : ""} – Einnahmenfarbe = im Plus, je näher an null desto röter, Ausgabenfarbe = im Minus`}</span>`;
+  renderBalancePrompt(d);
   const lakeCtl = Flow.lake($("#flow"), { nodes }, {
     label: "Geldfluss: Einnahmen links münden in den See, Ausgaben und Sparen fließen rechts ab",
     format: (v) => UI.money0(v),
@@ -929,6 +943,9 @@ function renderFlow(d) {
       { cls: "lf-s", text: plan.vsPlan == null ? periodLabel() : `${planWord(plan.vsPlan)} (anteilig)` },
     ],
     detail: (x) => {
+      if (x.col === 1 && bal) return `<b>Kontostand am ${dateDe(bal.endDate)}: ${UI.money0(bal.end)}</b><br><span class="muted">${balanceWay(bal.explain.end, bal.endDate)}</span>
+        <br><br>Am ${dateDe(bal.startDate)}: <b>${UI.money0(bal.start)}</b><br><span class="muted">${balanceWay(bal.explain.start, bal.startDate)}</span>
+        <br><br>Ergebnis des Monats: ${UI.signed(net)}`;
       if (x.col === 1) return `<b>${net >= 0 ? "Im Plus" : "Im Minus"}</b> ${UI.signed(net)}${plan.vsPlan != null ? `<br>${planWord(plan.vsPlan)} (anteilig)<br><span class="muted">Plan bis heute ${UI.money0(plan.expected)} (${UI.pct(plan.progress * 100, 0)} des Zeitraums)</span>` : ""}`;
       if (x.kind === "gap") return `<b>Aus Erspartem</b> · ${UI.money0(x.value)}<br><span class="muted">In diesem Zeitraum ging mehr raus als reinkam; die Differenz wurde vom vorhandenen Kontostand bezahlt. Ausblenden über „Rücklagen“.</span>`;
       if (x.kind === "carry") return `<b>${esc(x.name)}</b> · ${UI.money0(x.value)}<br><span class="muted">Was im Vergleichszeitraum nach Ausgaben und Sparen übrig blieb. Ausblenden über „Rücklagen“.</span>`;
@@ -944,6 +961,27 @@ function renderFlow(d) {
     },
   });
   kickNewBookings(lakeCtl, nodes, f);
+}
+
+/** Rücklagen an, aber kein Kontostand bekannt: direkt im Geldfluss eintragen lassen. */
+function renderBalancePrompt(d) {
+  const box = $("#balance-prompt");
+  if (!PREFS.carry || d.account_balance) { box.hidden = true; box.innerHTML = ""; return; }
+  const accounts = (state.status?.accounts || []).map((a) => a.account).filter((a) => !/kredit|visa|master|card|karte|amex/i.test(a));
+  if (!accounts.length) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = `<form class="balance-prompt"><span>Damit der See deinen echten Kontostand zeigt: Wie viel ist <b>heute</b> auf dem Konto?</span>
+      ${accounts.length > 1 ? `<select name="account" aria-label="Konto">${accounts.map((a) => `<option>${esc(a)}</option>`).join("")}</select>` : `<input type="hidden" name="account" value="${esc(accounts[0])}">`}
+      <input type="text" name="amount" inputmode="decimal" placeholder="z. B. 4248,35" aria-label="Kontostand heute">
+      <button type="submit" class="primary">Übernehmen</button></form>`;
+  $("form", box).onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target, amount = f.amount.value.trim().replace(/\./g, "").replace(",", ".");
+    if (!amount || isNaN(+amount)) { toast("Bitte einen Betrag eingeben, z. B. 4248,35", { error: true }); return; }
+    await api("PUT", "/api/balances", { account: f.account.value, amount: +amount, date: iso(new Date()) });
+    toast("Kontostand gespeichert – frühere Stände werden aus den Buchungen zurückgerechnet");
+    loadDashboard();
+  };
 }
 
 /** Neue Buchungen seit dem letzten Blick (Bank-Sync, Import) stoßen den See dort an, wo ihr Fluss mündet. */
@@ -1548,9 +1586,10 @@ async function renderBalances() {
   try { rows = await api("GET", "/api/balances"); } catch { box.innerHTML = ""; return; }
   const SRC = { manuell: "von dir eingetragen", bank: "von der Bank", csv: "aus dem Export" };
   box.innerHTML = rows.map((r) => r.card && !r.anchor
-    ? `<div class="bal-row"><div><b>${esc(r.account)}</b><div class="meta">Kreditkarte – setzt sich über die Abrechnung auf null, kein Eintrag nötig${r.open ? ` · offen: ${money(r.open)}` : ""}</div></div></div>`
+    ? `<div class="bal-row"><div><b>${esc(r.account)}</b><div class="meta">Kreditkarte – zählt nicht zum Kontostand (setzt sich über die Abrechnung vom Girokonto auf null), kein Eintrag nötig</div></div></div>`
     : `<form class="bal-row" data-account="${esc(r.account)}"><div><b>${esc(r.account)}</b>
-        <div class="meta">${r.anchor ? `heute: <b>${money(r.current)}</b> · ${SRC[r.anchor.source] || r.anchor.source} am ${dateDe(r.anchor.date)}` : `<b>Kontostand unbekannt</b> – einmal eintragen, den Rest rechnet die App aus den Buchungen`}</div></div>
+        <div class="meta">${r.anchor ? `heute: <b>${money(r.current)}</b> · ${SRC[r.anchor.source] || r.anchor.source} am ${dateDe(r.anchor.date)}` : `<b>Kontostand unbekannt</b> – einmal eintragen, den Rest rechnet die App aus den Buchungen`}</div>
+        ${r.history?.length ? `<div class="meta">zurückgerechnet, Stand am Monatsende: ${r.history.map((h) => `${monthLabel(h.month)} <b class="${h.value < 0 ? "sig-bad" : ""}">${money0(h.value)}</b>`).join(" · ")}</div>` : ""}</div>
         <label class="bal-input">Stand heute <input type="text" inputmode="decimal" name="amount" placeholder="z. B. 4248,35" aria-label="Kontostand heute für ${esc(r.account)}"></label>
         <button type="submit">Speichern</button></form>`).join("") || `<p class="empty-note">Noch keine Konten importiert.</p>`;
   $$("#balances form").forEach((f) => (f.onsubmit = async (e) => {

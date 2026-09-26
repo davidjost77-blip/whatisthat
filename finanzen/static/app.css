@@ -1103,3 +1103,6 @@ body.review-open { overflow: hidden; }
 .bal-input { display: grid; font-size: 12px; color: var(--text-muted); gap: 2px; }
 .bal-input input { width: 130px; }
 .dup-table { margin: 8px 0 10px; font-size: 12.5px; }
+.balance-prompt { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 10px; padding: 10px 12px;
+  border-radius: 10px; background: color-mix(in srgb, var(--flow-in) 8%, var(--surface-1)); font-size: 13px; }
+.balance-prompt input[name=amount] { width: 130px; }

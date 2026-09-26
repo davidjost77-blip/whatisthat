@@ -135,7 +135,9 @@ Streaming, Versicherungen …) und für vier Kategorien ein Beispiel-Budget gese
 
 Unter *Import › Kontostände* trägst du einmal den heutigen Kontostand deines Girokontos ein – mit Bankanbindung oder
 einem DKB-Export („Kontostand vom …“) kommt er automatisch. Jeden anderen Tag rechnet die App aus den Buchungen.
-Kreditkarten brauchen keinen Eintrag: Sie stehen nach der Abrechnung wieder auf null; offene Käufe zählen automatisch.
+Kreditkarten brauchen keinen Eintrag und zählen nicht zum Kontostand: Sie stehen nach der Abrechnung vom Girokonto
+wieder auf null. Unter *Kontostände* siehst du die zurückgerechneten Stände am Ende der letzten Monate, und im
+Geldfluss zeigt das Überfahren des Sees den Rechenweg.
 
 Mit eingeschalteten **Rücklagen** zeigt der Geldfluss dann den **Kontostand am Ende des Zeitraums**: Ein Monat mit
 mehr Ausgaben als Einnahmen wird links „Aus Erspartem“ ausgeglichen, der See bleibt blau, solange genug auf dem Konto
