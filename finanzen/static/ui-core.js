@@ -124,6 +124,9 @@
     const n = parseInt(m[1], 16);
     return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
   };
+  /** Balkenfüllung: oben satt, unten weicher (bzw. links → rechts bei liegenden Balken). */
+  UI.barFill = (hex, horizontal = false) => new echarts.graphic.LinearGradient(0, 0, horizontal ? 1 : 0, horizontal ? 0 : 1,
+    [{ offset: 0, color: horizontal ? UI.alpha(hex, 0.55) : hex }, { offset: 1, color: horizontal ? hex : UI.alpha(hex, 0.55) }]);
   /** Verlaufsfläche unter einer Linie in Elementfarbe. */
   UI.areaFill = (hex, top = 0.35) => new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: UI.alpha(hex, top) }, { offset: 1, color: UI.alpha(hex, 0) }]);
 
@@ -142,6 +145,7 @@
 
   // ------------------------------------------------------------------ Bewegung an/aus
   UI.initMotion = function () {
+    UI.initTabs();
     let off = false;
     try { off = localStorage.getItem("motion") === "off"; } catch { /* privater Modus */ }
     document.body.classList.toggle("no-motion", off);
@@ -173,6 +177,84 @@
         { duration: 0.7, delay: i * stagger, ease: [0.2, 0.9, 0.2, 1] });
     });
   };
+
+  /** Metapher-Spuren füllen sich von links, Soll-Striche erscheinen danach. */
+  UI.fillTracks = function (root) {
+    if (!root || UI.reducedMotion() || !window.Motion?.animate) return;
+    root.querySelectorAll(".track-m").forEach((t, i) => {
+      const fill = t.querySelector(".fill"), soll = t.querySelector(".soll");
+      if (fill) window.Motion.animate(fill, { transform: ["scaleX(0)", "scaleX(1)"] }, { duration: 1, delay: 0.25 + i * 0.08, ease: [0.2, 0.9, 0.2, 1] });
+      if (soll) window.Motion.animate(soll, { opacity: [0, 1], transform: ["scaleY(0.2)", "scaleY(1)"] }, { duration: 0.5, delay: 0.9 + i * 0.08 });
+    });
+  };
+
+  /** Zahlen im Text hochzählen lassen (erste Zahl je Textknoten, Format bleibt erhalten). */
+  const NUM_RE = /([−+-]?)(\d{1,3}(?:\.\d{3})+|\d+)(,\d+)?/;
+  UI.countUp = function (root, selector, dur = 900) {
+    if (!root || UI.reducedMotion()) return;
+    root.querySelectorAll(selector).forEach((el) => {
+      [...el.childNodes].filter((n) => n.nodeType === 3 && NUM_RE.test(n.textContent)).forEach((n) => {
+        const text = n.textContent, m = text.match(NUM_RE);
+        if (/^(19|20)\d\d$/.test(m[2]) && !m[3]) return; // Jahreszahlen bleiben stehen
+        const decimals = m[3] ? m[3].length - 1 : 0;
+        const target = parseFloat(m[2].replace(/\./g, "") + (m[3] ? `.${m[3].slice(1)}` : ""));
+        if (!isFinite(target) || target === 0) return;
+        const fmt = new Intl.NumberFormat("de-DE", { minimumFractionDigits: decimals, maximumFractionDigits: decimals, useGrouping: m[2].includes(".") || target >= 10000 });
+        const pre = text.slice(0, m.index) + m[1], post = text.slice(m.index + m[0].length);
+        const start = performance.now();
+        const step = (now) => {
+          const p = Math.min(1, (now - start) / dur), e = 1 - Math.pow(1 - p, 3);
+          n.textContent = pre + fmt.format(target * e) + post;
+          if (p < 1) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      });
+    });
+  };
+
+  /** Tabellenzeilen erscheinen nacheinander (CSS .rows-in). */
+  UI.rowsIn = function (root) {
+    root?.querySelectorAll("table.depth-table").forEach((t) => {
+      t.classList.add("rows-in");
+      [...(t.tBodies[0]?.rows || [])].forEach((r, i) => r.style.setProperty("--i", Math.min(i, 30)));
+    });
+  };
+
+  /** Fokus-Inhalt: Karten und Vergleichszeilen schweben herein, Zahlen zählen hoch. */
+  UI.animateLayer = function (body, level) {
+    UI.enter(body.querySelectorAll(":scope > .focus-head, .focus-grid > *, .depth-grid > *, :scope > section, .compare .row, .play .controls, .outcome .tile, .scenario, .etf, .etf-new"), { y: 18, stagger: 0.045 });
+    UI.countUp(body, ".focus-head h1, .compare .v");
+    UI.fillTracks(body);
+    if (level === 3) UI.rowsIn(body);
+  };
+
+  /** Gleitende Markierung unter dem aktiven Reiter; beim Überfahren gleitet sie mit. */
+  UI.initTabs = function () {
+    const tabs = document.querySelector(".tabs");
+    if (!tabs || tabs.querySelector(".tab-ink")) return;
+    const ink = document.createElement("span");
+    ink.className = "tab-ink";
+    tabs.prepend(ink);
+    tabs.classList.add("has-ink");
+    const moveTo = (a) => {
+      if (!a) { ink.style.opacity = "0"; return; }
+      ink.style.opacity = "1";
+      ink.style.width = `${a.offsetWidth}px`;
+      ink.style.height = `${a.offsetHeight}px`;
+      ink.style.transform = `translate(${a.offsetLeft}px, ${a.offsetTop}px)`;
+    };
+    const active = () => tabs.querySelector('[aria-selected="true"], [aria-current="page"]');
+    const place = () => moveTo(active());
+    new MutationObserver(place).observe(tabs, { attributes: true, subtree: true, attributeFilter: ["aria-selected", "aria-current"] });
+    tabs.addEventListener("mouseover", (e) => { const a = e.target.closest("button, a.tab"); if (a) moveTo(a); });
+    tabs.addEventListener("mouseleave", place);
+    window.addEventListener("resize", place);
+    document.fonts?.ready.then(place);
+    place();
+  };
+
+  /** Einheitlicher Eintritt für Balkendiagramme: Balken wachsen nacheinander. */
+  UI.barAnim = () => ({ animationDelay: (i) => i * 45, animationDuration: 850, animationEasing: "cubicOut", animationDelayUpdate: (i) => i * 15 });
 
   // ------------------------------------------------------------------ Bewegung
   const EASE = [0.2, 0.9, 0.25, 1];
@@ -300,6 +382,7 @@
         this.setInert();
         await render(this.body(lvl), this);
         this.body(lvl).scrollTop = 0;
+        UI.animateLayer(this.body(lvl), lvl);
         if (animate && lvl === level) await this.grow(lvl);
         layer.style.clipPath = "none";
       };
@@ -351,7 +434,7 @@
     /** Aktuelle Stufe neu zeichnen (z. B. nach Datenänderung). */
     async refresh() {
       if (this.level >= 2) { this.body(2).innerHTML = ""; await this.items[this.key].focus(this.body(2), this); }
-      if (this.level >= 3) { this.body(3).innerHTML = ""; await this.items[this.key].depth(this.body(3), this); }
+      if (this.level >= 3) { this.body(3).innerHTML = ""; await this.items[this.key].depth(this.body(3), this); UI.rowsIn(this.body(3)); }
       this.renderCrumbs();
     }
   }

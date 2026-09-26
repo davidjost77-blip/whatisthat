@@ -15,6 +15,7 @@ from . import analytics, db, depot, importer, ingest, rules
 
 log = logging.getLogger("finanzen.server")
 STATIC_DIR = Path(__file__).parent / "static"
+mimetypes.add_type("font/woff2", ".woff2")  # ältere Python-Versionen kennen den Typ nicht
 MAX_UPLOAD = 20 * 1024 * 1024
 HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 

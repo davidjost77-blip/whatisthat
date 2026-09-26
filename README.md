@@ -7,8 +7,8 @@ Kategorien und Regeln** automatisch zuordnet und alles in **Dashboards** darstel
 ![Dashboard](docs/dashboard.png)
 
 **Datenschutz:** Alles läuft auf deinem Rechner. Der Server lauscht nur auf `127.0.0.1`, die Daten liegen in einer
-SQLite-Datei unter `data/`, und es gibt keine Cloud und kein Tracking. Die Diagrammbibliothek (ECharts) und die
-Animationsbibliothek (Motion) sind mitgeliefert, die App funktioniert also auch offline.
+SQLite-Datei unter `data/`, und es gibt keine Cloud und kein Tracking. Die Diagrammbibliothek (ECharts), die
+Animationsbibliothek (Motion) und die Schrift (Inter) sind mitgeliefert, die App funktioniert also auch offline.
 
 ## Schnellstart (Windows)
 
@@ -110,29 +110,21 @@ Streaming, Versicherungen …) und für vier Kategorien ein Beispiel-Budget gese
 
 ## Dashboards
 
-Gestaltet nach **[DESIGN.md](DESIGN.md)** (verbindlich, Stand 2): drei Zoomstufen, eine eigene Farbe je Element
-(Ausgaben violett, Sparquote türkis, Kategorien himmelblau, Depot gold), Rot und Grün nur für Bewertungen, ruhige
-Bewegung, jede Zahl mit Soll-Wert und Alltagsäquivalent, Breadcrumb und <kbd>Esc</kbd> für den Weg zurück.
+Gestaltet nach **[DESIGN.md](DESIGN.md)** (verbindlich, Stand 3): drei Zoomstufen, eine eigene Farbe je Element
+(Ausgaben violett, Sparquote türkis, Kategorien blau, Depot gold), Rot und Grün nur für Bewertungen, Schrift Inter,
+Bewegung in allen Teilen (Kacheln schweben herein, Balken füllen sich, Zahlen zählen hoch, Diagramme wachsen), jede Zahl mit Soll-Wert und Alltagsäquivalent, Breadcrumb und <kbd>Esc</kbd> für den Weg zurück.
 
 | Stufe | Was du siehst | So kommst du hin |
 |---|---|---|
-| **Blick** | ein **animiertes Bild** mit vier Elementen – oder dieselben vier als Kacheln (Umschalter „Bild / Kacheln“) | Startseite |
-| **Fokus** | ein Element bildschirmfüllend mit Trend und Vergleich, alles andere ist ausgeblendet | Bildelement oder Kachel anklicken, es wächst zum Fokus |
+| **Blick** | vier Kacheln, jede mit Urteil („364 € unter Plan“), Metapher, Soll und Ist | Startseite |
+| **Fokus** | ein Element bildschirmfüllend mit Trend und Vergleich, alles andere ist ausgeblendet | Kachel anklicken, sie wächst zum Fokus |
 | **Tiefe** | exakte Zahlen als Tabelle und die Maßstäbe zum Einstellen | „Exakte Zahlen (Tiefe)“ |
 
 <kbd>Esc</kbd> geht jeweils eine Stufe zurück, auch aus den Umsätzen zurück in die Tabelle, aus der du gekommen bist.
 Jede Stufe hat eine eigene Adresse (z. B. `#dashboard/fokus/ausgaben`), Neuladen behält also den Kontext.
 Der Schalter **„Bewegung“** oben rechts stellt alle Animationen ab (auch die Systemeinstellung „Bewegung reduzieren“ wird beachtet).
 
-![Übersicht als Landschaft](docs/dashboard.png)
-
-**Das Bild „Landschaft“** – alle Maße sind echte Daten:
-
-- **Wassertank** = Monatsbudget, das noch übrig ist. Die gestrichelte Linie zeigt, wie viel heute noch übrig sein
-  sollte. Liegt das Wasser darunter, färbt es sich rot.
-- **Pflanze** = Sparquote, das Fähnchen markiert das Soll. Unter dem Soll welkt sie.
-- **Wetter** = Kategorien: Sonne, wenn alles im Rahmen ist, sonst eine Regenwolke je Kategorie über Soll mit Betrag.
-- **Boot** = Depot. Die Wasserlinie sind deine Einzahlungen, die Höhe darüber ist der Gewinn. Ein Klick führt in den Sparplan.
+![Übersicht](docs/dashboard.png)
 
 Die vier Kacheln der Übersicht:
 
@@ -154,12 +146,7 @@ Eigene Werte trägst du in der Tiefe unter *Maßstäbe* ein.
 Unter **Sparplan** (<http://localhost:8765/sparplan.html>) bildet die App deinen ETF-Sparplan ab. Vorbelegt ist der laufende
 Plan: 250 € monatlich in den **Vanguard FTSE All-World (Acc)** (VWCE, IE00BK5BQT80) mit den bisherigen Käufen.
 
-![Sparplan als Bergtour](docs/sparplan.png)
-
-**Das Bild „Bergtour“:** Der Grat des Berges ist der mittlere Verlauf deiner Projektion bis zum Zieljahr, der Nebel die
-Bandbreite, die Fahne dein Ziel. Endet der Grat unter der Fahne, wird die Lücke rot markiert. Der **Ballon** über dem
-See zeigt das Depot gegenüber den Einzahlungen (Wasserlinie). Die **Trittsteine** sind die Monate deines Sparplans,
-ein fehlender Stein ist eine fehlende Rate. Der **Wegweiser** zeigt die drei Szenarien.
+![Sparplan](docs/sparplan.png)
 
 - **Depot heute**: Wert gegen Einzahlungen. Im Fokus Depotwert pro Handelstag, Kursverlauf (1 Jahr, 5 Jahre, seit
   Auflage) gegen deinen Ø Kaufkurs. In der Tiefe alle Käufe.

@@ -215,7 +215,7 @@ class DepotApiTests(unittest.TestCase):
             html = res.read()
         self.assertIn(b"tpl-play", html)
         self.assertIn(b"ui-core.js", html)
-        self.assertIn(b"scene.js", html)
+        self.assertNotIn(b"scene.js", html)
 
 
 @unittest.skipUnless(shutil.which("node"), "Node.js nicht installiert")
@@ -266,31 +266,6 @@ class ModelTests(unittest.TestCase):
           console.log(JSON.stringify({need, all: r.bands.prob, none: none.bands.prob}));""")
         self.assertAlmostEqual(res["need"], 200, places=3)
         self.assertEqual((res["all"], res["none"]), (1, 0))
-
-
-    def test_scenes(self):
-        script = f"""
-          globalThis.window = globalThis;
-          require({json.dumps(str(STATIC / 'scene.js'))});
-          const f = Scene.finance({{
-            ausgaben: {{ soll: 3000, ist: 2500, sollToDate: 2800, remainingText: "500 € übrig", sub: "x", bad: false }},
-            sparquote: {{ rate: 25, soll: 20, sollText: "20 %", text: "25 %", sub: "y", bad: false }},
-            kategorien: {{ over: [{{ name: "Freizeit", devText: "80 €" }}], text: "1 über Soll", sub: "z" }},
-            depot: {{ value: 900, invested: 1000, investedText: "1.000 €", text: "900 €", sub: "w", bad: true }},
-          }});
-          const p = Scene.plan({{
-            depot: {{ value: 1100, invested: 1000, investedText: "1.000 €", text: "1.100 €", sub: "", bad: false }},
-            takt: {{ months: [{{ done: true, due: true }}, {{ done: false, due: true }}], text: "1 fehlt", sub: "", bad: true }},
-            ziel: {{ median: [0, 50, 90], p10: [0, 40, 70], p90: [0, 60, 120], goal: 100, reached: false, text: "", sub: "", goalText: "", startLabel: "", endLabel: "" }},
-            spiel: {{ scenarios: [{{ name: "A", value: 1, text: "1", active: true }}], text: "" }},
-          }});
-          const count = (svg, re) => (svg.match(re) || []).length;
-          console.log(JSON.stringify({{ fEls: count(f, /class="scene-el"/g), pEls: count(p, /class="scene-el"/g),
-            cloud: count(f, /sc-cloud-body/g), missing: count(p, /sc-stone missing/g), gap: count(p, /sc-gap/g) }}));"""
-        out = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        res = json.loads(out.stdout)
-        self.assertEqual((res["fEls"], res["pEls"]), (4, 4))  # genau vier Elemente je Bild
-        self.assertEqual((res["cloud"], res["missing"], res["gap"]), (1, 1, 1))
 
 
 if __name__ == "__main__":

@@ -18,11 +18,11 @@ Oberfläche angepasst, nicht die Regel.
 2. Fokus: ein Element bildschirmfüllend, Trend + Vergleich
 3. Tiefe: exakte Daten, Tabellen
 
-### Visuelle Regeln (Stand 2, siehe Änderungen am Ende)
+### Visuelle Regeln (Stand 3, siehe Änderungen am Ende)
 - Farbenfroh: jedes Element hat eine eigene Identitätsfarbe; Rot und Grün sind reserviert für Abweichung/Handlungsbedarf und kommen immer mit Symbol + Text
-- Blick als **animiertes Metapher-Bild** (Kacheln als gleichwertige Alternative)
+- Schrift **Inter** (lokal mitgeliefert), Zahlen mit gleich breiten Ziffern
 - Keine Tachos, keine Kreisdiagramme, keine blinkenden oder flackernden Elemente
-- Ruhige, fließende Bewegung ist erwünscht; sie lässt sich jederzeit ausschalten
+- Bewegung in allen Teilen, wo sie etwas erzählt (Eintritt, Füllen, Hochzählen, Zoom); abschaltbar
 - Zoom-Übergänge räumlich animiert (framer-motion bzw. Motion), federnd, höchstens 450 ms
 - Zurück-Navigation per Esc
 - Beträge immer auch als Alltagsäquivalent (Tage Budget, Monate Fixkosten)
@@ -35,7 +35,7 @@ Oberfläche angepasst, nicht die Regel.
 
 | Stufe | Inhalt | Regeln |
 |---|---|---|
-| **Blick** | ein Bild mit genau 4 Elementen (oder 4 Kacheln), jedes mit Metapher, Ist, Soll, Alltagsäquivalent und einem Satz Urteil („120 € unter Plan“) | Keine Achsen, keine Legenden, keine Tabellen. Eine Kachel muss in 5 Sekunden verstanden sein: *Wo stehe ich, gemessen woran, muss ich etwas tun?* |
+| **Blick** | genau 4 Kacheln, jede mit Metapher, Ist, Soll, Alltagsäquivalent und einem Satz Urteil („120 € unter Plan“) | Keine Achsen, keine Legenden, keine Tabellen. Eine Kachel muss in 5 Sekunden verstanden sein: *Wo stehe ich, gemessen woran, muss ich etwas tun?* |
 | **Fokus** | genau ein Element, bildschirmfüllend | Immer **Trend** (Verlauf über Zeit) **und Vergleich** (Soll, Vorzeitraum oder Durchschnitt). Alles andere ist ausgeblendet, auch Kopfzeile und Reiter. Sichtbar bleibt nur der Breadcrumb. |
 | **Tiefe** | exakte Zahlen des Elements als Tabelle, dazu die Einstellungen der Maßstäbe | Cent-genau, sortierbar lesbar, keine Deko. Werkzeuge (Umsätze, Kategorien, Import, Käufe) gehören auf diese Stufe. |
 
@@ -73,15 +73,15 @@ Jeder Betrag bekommt ein Äquivalent, das man fühlen kann:
 
 ### 5. Farbe
 **Farbe trägt Identität, Rot und Grün tragen Bewertung.** Jedes Element behält seine Farbe auf allen drei Stufen:
-im Bild, in der Kachel, im Fokus-Diagramm und in der Tabelle (Akzentstreifen). So erkennt man beim Zoomen sofort,
+in der Kachel, im Fokus-Diagramm und in der Tabelle (Akzentstreifen). So erkennt man beim Zoomen sofort,
 wo man ist.
 
 | Token | Hell | Dunkel | Element |
 |---|---|---|---|
-| `--c-violet` | `#7c5cff` | `#a08bff` | Ausgaben · Ziel |
-| `--c-teal` | `#0ea5a0` | `#2dd4bf` | Sparquote · Was wäre wenn |
-| `--c-sky` | `#2f8ff0` | `#60a5fa` | Kategorien · Sparplan-Takt |
-| `--c-gold` | `#eb9b0c` | `#fbbf24` | Depot |
+| `--c-violet` | `#6e56f8` | `#9c8cff` | Ausgaben · Ziel |
+| `--c-teal` | `#14a39a` | `#34d3c3` | Sparquote · Was wäre wenn |
+| `--c-sky` | `#2f7fe6` | `#6aa8ff` | Kategorien · Sparplan-Takt |
+| `--c-gold` | `#e8a13a` | `#f5bd5c` | Depot |
 | `--signal-bad` | `#dc3545` | `#ff6369` | **nur** negative Abweichung / Handlungsbedarf, immer mit ⚠ und Text |
 | `--signal-good` | `#18794e` | `#3dd68c` | **nur** positive Aussage (Ziel erreicht, Soll erfüllt), immer mit ✓ und Text |
 | `--ink-1` … `--ink-4` | Graustufen | | Vergleichslinien, Soll-Linien, Einzahlungen, Achsen |
@@ -100,45 +100,42 @@ wo man ist.
 - Keine Zahl ohne Maßstab: Einzelzahlen ohne Soll, Vorzeitraum oder Äquivalent sind nicht erlaubt.
 
 ### 7. Bewegung
-Bewegung erzählt, sie lenkt nicht ab.
+Bewegung erzählt, sie lenkt nicht ab. Sie steckt in jedem Dashboard-Teil, läuft aber nur einmal ab und kommt dann zur Ruhe.
 
-| Art | Beispiel | Regel |
+| Wo | Was sich bewegt | Dauer |
 |---|---|---|
-| **Eintritt** | Kacheln schweben nacheinander herein, Wasser steigt auf seinen Stand, Pflanze wächst, Zahlen zählen hoch | einmalig beim Laden, 500–1200 ms, gestaffelt |
-| **Zoom** | Kachel/Bildelement wächst zum Fokus, schrumpft beim Zurückgehen | räumlich (FLIP), federnd, ≤ 450 ms |
-| **Umgebung** | Wellen im Tank, Wolken ziehen, Boot schaukelt, Hintergrund fließt | langsam (≥ 3 s pro Zyklus), kleine Amplitude, bedeutungsvoll: sie zeigt, dass die Daten „leben“ |
-| **Rückmeldung** | Kachel hebt sich beim Überfahren, Regler ziehen Diagramme mit | ≤ 250 ms |
+| **Blick** | Kacheln schweben nacheinander herein; Metapher-Spuren füllen sich von links, der Soll-Strich erscheint danach; Zahlen zählen hoch; Kachel hebt sich beim Überfahren | 0,7–1,2 s, gestaffelt 80 ms |
+| **Zoom** | Kachel wächst räumlich zum Fokus, Fokus zur Tiefe; zurück schrumpft es in den Auslöser | ≤ 450 ms, federnd |
+| **Fokus** | Karten und Vergleichszeilen schweben herein; Überschrift und Werte zählen hoch; Balken wachsen nacheinander, Linien zeichnen sich; bei Reglern gleiten Diagramme in den neuen Zustand | 0,35–0,9 s |
+| **Tiefe** | Tabellenzeilen erscheinen nacheinander | 22 ms je Zeile |
+| **Sparplan** | Monatsperlen und Meilensteine ploppen gestaffelt auf, neue ETF-Karten schweben herein, Ergebniszahlen laufen beim Ziehen mit, der Kurs-Chip leuchtet bei einem neuen Kurs einmal sanft auf | 0,5–0,9 s |
+| **Navigation** | Markierung gleitet unter den aktiven Reiter und folgt dem Mauszeiger; Breadcrumb-Glied gleitet herein; Dialoge und Toasts federn herein | 0,3–0,45 s |
+| **Hintergrund** | sehr langsamer Farbverlauf | 40 s pro Zyklus |
 
 - Umsetzung mit **Motion** (`motion`, die Vanilla-JavaScript-Ausgabe von framer-motion vom selben Hersteller),
-  lokal unter `finanzen/static/vendor/motion.js`, für Umgebung CSS-Keyframes. Kommt später React dazu, wird
-  `framer-motion` mit `layoutId` verwendet.
-- Schalter **„Bewegung“** in der Kopfzeile schaltet Umgebung und Eintritt ab (gespeichert pro Browser).
-  `prefers-reduced-motion` schaltet sie ebenfalls ab. Zoom-Übergänge werden dann sofort ausgeführt.
+  lokal unter `finanzen/static/vendor/motion.js`, ergänzt um CSS-Keyframes und die Animationen von ECharts.
+  Kommt später React dazu, wird `framer-motion` mit `layoutId` verwendet.
+- Schalter **„Bewegung“** in der Kopfzeile schaltet alles außer den Zoom-Übergängen ab (gespeichert pro Browser).
+  `prefers-reduced-motion` schaltet ebenfalls ab; Zoom-Übergänge laufen dann sofort.
+- Nichts läuft in Schleife außer dem Hintergrund und dem Farbverlauf der Überschrift (≥ 9 s pro Zyklus).
+
+### 7a. Schrift
+- **Inter** (variabel, SIL Open Font License) unter `finanzen/static/vendor/`, Fallback Systemschrift.
+- Zahlen mit `tnum` (gleich breite Ziffern), damit hochzählende Werte und Tabellen nicht springen.
+- Überschriften 700–780, Laufweite −0,03 em; Fließtext 14,5 px / 1,5.
 
 ### 8. Blick-Metaphern
-Der Blick ist ein **Bild**: eine kleine Landschaft mit genau vier Elementen. Jedes Element ist anklickbar und
-wächst zu seinem Fokus. Die Maße im Bild sind echte Daten, keine Dekoration.
+Eine kleine Metapher pro Kachel, in der Farbe des Elements, mit genau einer Soll-Marke:
 
-**Finanzen – „Landschaft“**
-
-| Element | Metapher | Daten | Abweichung |
-|---|---|---|---|
-| Ausgaben | **Wassertank**: Wasserstand = Monatsbudget, das noch übrig ist; Markierung = so viel sollte heute noch übrig sein | Monats-Soll − Ausgaben | Wasser unter der Markierung → rot, ⚠ |
-| Sparquote | **Pflanze**: Höhe = Sparquote, Fähnchen = Soll | Überschuss / Einnahmen | unter Soll → welk, ⚠ |
-| Kategorien | **Wetter**: Sonne = alles im Rahmen, je Kategorie über Soll eine Regenwolke mit Namen und Betrag | Ist vs. Soll bis heute | Wolken |
-| Depot | **Boot auf der Wasserlinie**: Wasserlinie = Einzahlungen, Höhe über Wasser = Gewinn | Depotwert vs. Einzahlungen | Boot sinkt unter die Linie, ⚠ |
-
-**Sparplan – „Bergtour“**
-
-| Element | Metapher | Daten | Abweichung |
-|---|---|---|---|
-| Depot | **Heißluftballon** über einem See, Wasserlinie = Einzahlungen | Depotwert vs. Einzahlungen | Ballon im Wasser, ⚠ |
-| Sparplan-Takt | **Trittsteine** über den Fluss, ein Stein pro Monat | erfasste Käufe | fehlender Stein, ⚠ |
-| Ziel | **Berg**: Der Grat ist der mittlere Verlauf der Projektion, der Nebel die Bandbreite, die Fahne das Ziel | Projektion bis zum Zieljahr | Grat endet unter der Fahne, ⚠ |
-| Was wäre wenn | **Wegweiser** mit drei Schildern (Vorsichtig/Historisch/Rückenwind), Länge = Endwert | Szenarien | nie |
-
-Die Kacheln zeigen dieselben vier Elemente mit Urteil, Soll, Ist und Äquivalent und bleiben als Umschalter „Kacheln“
-verfügbar.
+| Kachel | Metapher | Rot, wenn … |
+|---|---|---|
+| Ausgaben | **Monatsweg**: Balken = ausgegeben, Strich = wo du heute laut Soll stehen dürftest | ausgegeben > Soll bis heute |
+| Sparquote | **Polster**: Füllung bis zur Soll-Linie | Quote < Soll |
+| Kategorien | **Ausreißer**: bis zu 3 Balken relativ zu ihrem Soll (100-%-Strich) | eine Kategorie > Soll |
+| Depot | **Wasserlinie**: Wert gegen die Einzahlungslinie | Wert < Einzahlungen |
+| Sparplan-Takt | **Monatsperlen**: eine Perle pro Monat, gefüllt = Kauf erfasst | Kauf fehlt / Abgleich passt nicht |
+| Ziel | **Weg zur Fahne**: mittlerer Verlauf im Zieljahr gegen den Zielbetrag | Median verfehlt das Ziel |
+| Was wäre wenn | **Stellschrauben**: die drei wichtigsten Annahmen als Chips | nie |
 
 ### 9. Checkliste für jede neue Ansicht
 - [ ] Welche Zoomstufe ist das? Hält sie deren Regeln ein (max. 4 / bildschirmfüllend / Tabelle)?
@@ -146,13 +143,15 @@ verfügbar.
 - [ ] Jede Zahl hat Soll oder Vergleich **und** ein Alltagsäquivalent
 - [ ] Elementfarbe konsequent auf allen Stufen; Rot/Grün nur für Bewertung, immer mit Symbol + Text
 - [ ] Kein Tacho, kein Kreis, nichts blinkt oder flackert
-- [ ] Übergang räumlich, federnd, ≤ 450 ms; Bewegungs-Schalter und reduzierte Bewegung respektiert
+- [ ] Eintritt/Übergang vorhanden, räumlich, ≤ 450 ms beim Zoom; Bewegungs-Schalter und reduzierte Bewegung respektiert
 - [ ] Hell- und Dunkelmodus geprüft, Handybreite ohne horizontales Scrollen
 
 ---
 
 ## Änderungen
 
+- **Stand 3** (auf Wunsch): Das animierte Metapher-Bild ist wieder entfernt, der Blick besteht aus vier Kacheln.
+  Neu: Schrift Inter, stimmigere Palette gleicher Sättigung, Bewegung in allen Dashboard-Teilen (§7).
 - **Stand 2** (auf Wunsch): Statt „Graustufen default, Farbe nur für Abweichung“ gilt „Identitätsfarbe je Element,
   Rot/Grün nur für Bewertung“. Ruhige Umgebungsbewegung ist erlaubt (abschaltbar), Zoom-Übergänge dürfen federn
   (≤ 450 ms statt ≤ 300 ms). Der Blick ist zusätzlich ein animiertes Metapher-Bild. Unverändert: drei Zoomstufen,

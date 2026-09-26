@@ -264,7 +264,7 @@ const context = () => {
 
 function pearlsHtml(r, max = 12) {
   const list = r.months.slice(-max);
-  return `<div class="pearls" aria-hidden="true">${list.map((m) => `<span class="pearl ${m.done ? "done" : m.due ? "missing" : "next"}" title="${MONTHS_LONG[+m.ym.slice(5) - 1]} ${m.ym.slice(0, 4)}: ${m.done ? "Kauf erfasst" : m.due ? "kein Kauf erfasst" : "steht noch aus"}"></span>`).join("")}</div>`;
+  return `<div class="pearls" aria-hidden="true">${list.map((m, i) => `<span style="--i:${i}" class="pearl ${m.done ? "done" : m.due ? "missing" : "next"}" title="${MONTHS_LONG[+m.ym.slice(5) - 1]} ${m.ym.slice(0, 4)}: ${m.done ? "Kauf erfasst" : m.due ? "kein Kauf erfasst" : "steht noch aus"}"></span>`).join("")}</div>`;
 }
 
 function renderBlick() {
@@ -324,42 +324,15 @@ function renderBlick() {
   }));
   const firstTiles = !$("#blick").children.length;
   $("#blick").innerHTML = tiles.join("");
-  renderScene({ d, r, rec, g, res });
-  applyBlickMode(firstTiles);
+  enterTiles(firstTiles);
 }
 
-// ---------- Metapher-Bild „Bergtour“ (DESIGN.md §8)
-function renderScene({ d, r, rec, g, res }) {
-  const diff = d.value - d.invested;
-  const s = scen();
-  const scenarios = state.result.scenarios.map((x) => ({ name: x.name, value: x.r.total[x.r.months], text: moneyShort(x.r.total[x.r.months]), active: Math.abs(s.ret - x.ret) < 0.01 }));
-  const takBad = r.missing.length > 0 || (rec && !rec.ok);
-  const data = {
-    depot: { value: d.value, invested: d.invested, investedText: money0(d.invested), bad: diff < 0,
-      text: `${diff < 0 ? "⚠ " : ""}${money0(d.value)}`, sub: `${signed(diff, money0)} ggü. Einzahlungen · ${UI.equiv(d.value)}` },
-    takt: { months: r.months, bad: takBad,
-      text: r.missing.length ? `⚠ ${r.missing.length} Rate fehlt` : rec && !rec.ok ? `⚠ Abgleich: ${money0(Math.abs(rec.diff))} Differenz` : `${r.done} von ${r.due || r.done} Raten im Takt`,
-      sub: `${money0(state.settings.plan.rate)} am ${state.settings.plan.day}.` },
-    ziel: { median: g.r.total, p10: g.r.bands.p10, p90: g.r.bands.p90, goal: goalAmount(), reached: g.reached,
-      goalText: `${g.reached ? "✓" : "⚠"} ${moneyShort(goalAmount())} · ${goalYear()}`,
-      text: g.reached ? `✓ Ziel ${goalYear()} erreichbar` : `⚠ ${moneyShort(g.median)} statt ${moneyShort(goalAmount())}`,
-      sub: `Chance ${Math.round(g.prob * 10)} von 10 · ${g.reached ? "Mindestrate" : "nötig"} ${money0(g.need)} / Monat`,
-      startLabel: "heute", endLabel: String(goalYear()) },
-    spiel: { scenarios, text: `${moneyShort(res.total[res.months])} in ${s.years} Jahren` },
-  };
-  Scene.mount($("#scene"), Scene.plan(data), (key, el) => zoom.open(key, 2, el));
-}
-
-// Standard: Bild; auf schmalen Bildschirmen Kacheln, weil das Bild dort zu klein zum Lesen wäre
-let blickMode = (() => {
-  const fallback = matchMedia("(max-width: 700px)").matches ? "kacheln" : "bild";
-  try { return localStorage.getItem("blickMode") || fallback; } catch { return fallback; }
-})();
-function applyBlickMode(enter = false) {
-  $("#scene").hidden = blickMode !== "bild";
-  $("#blick").hidden = blickMode !== "kacheln";
-  $$("#view-switch button").forEach((b) => b.classList.toggle("active", b.dataset.mode === blickMode));
-  if (enter && blickMode === "kacheln") UI.enter($$("#blick .blick-tile"));
+/** Kacheln beim ersten Zeichnen gestaffelt hereinschweben lassen. */
+function enterTiles(first) {
+  if (!first) return;
+  UI.enter($$("#blick .blick-tile"));
+  UI.fillTracks($("#blick"));
+  UI.countUp($("#blick"), ".verdict, .facts b");
 }
 
 // ------------------------------------------------------------------ Fokus-Bausteine
@@ -492,10 +465,10 @@ function focusTakt(body) {
       return `<b>${MONTHS_LONG[+m.ym.slice(5) - 1]} ${m.ym.slice(0, 4)}</b>` + UI.tipRow(UI.mark(t.sky), "Eingezahlt", money(r.invested[i])) +
         UI.tipRow(UI.mark(t.ink1, true), "Soll", money(rate)) + `<div style="color:${t.muted}">${m.done ? "Kauf erfasst" : m.due ? "kein Kauf erfasst" : "noch nicht fällig"}</div>`;
     } },
-    series: [{ type: "bar", barMaxWidth: 34,
+    series: [{ type: "bar", ...UI.barAnim(), barMaxWidth: 34,
       // fehlende Monate als flache farbige Markierung, damit sie sichtbar sind
       data: r.months.map((m, i) => ({ value: m.due && !m.done ? rate * 0.06 : r.invested[i],
-        itemStyle: { borderRadius: [4, 4, 0, 0], color: m.due && !m.done ? t.bad : m.done ? t.sky : UI.alpha(t.sky, 0.25) } })),
+        itemStyle: { borderRadius: [4, 4, 0, 0], color: m.due && !m.done ? t.bad : m.done ? UI.barFill(t.sky) : UI.alpha(t.sky, 0.25) } })),
       markLine: { symbol: "none", silent: true, data: [{ yAxis: rate }], lineStyle: { color: t.ink1, type: "dashed", width: 1.5 },
         label: { formatter: `Soll ${money0(rate)}`, color: t.text, position: "insideEndTop", fontSize: 11.5 } } }],
   });
@@ -649,8 +622,8 @@ function renderMilestones(el, r) {
   if (goals[shown.length]) shown.push(goals[shown.length]);
   el.innerHTML = shown.map((x) => {
     const mid = M.reachMonth(r.bands.p50, x), early = M.reachMonth(r.bands.p90, x), late = M.reachMonth(r.bands.p10, x);
-    if (early === null) return `<li class="never"><div class="goal">${moneyShort(x)}</div><div class="when">nicht bis ${monthDate(r.months).getFullYear()}</div><span class="range">${UI.equiv(x)}</span></li>`;
-    return `<li><div class="goal">${moneyShort(x)}</div><div class="when">${mid !== null ? `${MONTHS[monthDate(mid).getMonth()]} ${monthDate(mid).getFullYear()} · in ${durationText(mid)}` : "nur in guten Verläufen"}</div>
+    if (early === null) return `<li class="never" style="--i:${shown.indexOf(x)}"><div class="goal">${moneyShort(x)}</div><div class="when">nicht bis ${monthDate(r.months).getFullYear()}</div><span class="range">${UI.equiv(x)}</span></li>`;
+    return `<li style="--i:${shown.indexOf(x)}"><div class="goal">${moneyShort(x)}</div><div class="when">${mid !== null ? `${MONTHS[monthDate(mid).getMonth()]} ${monthDate(mid).getFullYear()} · in ${durationText(mid)}` : "nur in guten Verläufen"}</div>
       <span class="range">(${monthDate(early).getFullYear()} – ${late !== null ? monthDate(late).getFullYear() : "später"}) · ${UI.equiv(x)}</span></li>`;
   }).join("");
 }
@@ -982,6 +955,7 @@ function addExtra(item) {
   $("#etf-dialog").close();
   renderEtfs();
   update();
+  UI.enter([...$$("#etf-grid .etf", playRoot() || document)].slice(-1), { y: 24 });
   loadEtfData(item.symbol).then(() => { renderEtfs(); syncControls(); });
   toast(`${cat.short || item.name} hinzugefügt – 50 € im Monat als Startwert`);
 }
@@ -1108,11 +1082,6 @@ async function reloadDepot() {
 }
 
 function wire() {
-  $$("#view-switch button").forEach((b) => (b.onclick = () => {
-    blickMode = b.dataset.mode;
-    try { localStorage.setItem("blickMode", blickMode); } catch { /* egal */ }
-    applyBlickMode(true);
-  }));
   const openTile = (el) => zoom.open(el.dataset.key, 2, el);
   $("#blick").addEventListener("click", (e) => { const el = e.target.closest(".blick-tile"); if (el) openTile(el); });
   $("#blick").addEventListener("keydown", (e) => {
@@ -1173,6 +1142,10 @@ async function pollQuote() {
   await loadQuote(PLAN());
   renderLiveChip();
   if (state.quotes.get(PLAN())?.price !== before) {
+    // einmaliges sanftes Aufleuchten des Kurs-Chips, kein Blinken
+    const chip = $("#live-chip");
+    chip.classList.add("tick");
+    setTimeout(() => chip.classList.remove("tick"), 900);
     renderBlick();
     if (zoom.level > 1 && zoom.key !== "spiel") zoom.refresh();
   }

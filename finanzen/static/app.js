@@ -339,8 +339,7 @@ function renderBlick() {
   }
   const firstTiles = !$("#blick").children.length;
   $("#blick").innerHTML = tiles.join("");
-  renderScene(c);
-  applyBlickMode(firstTiles);
+  enterTiles(firstTiles);
   const src = dash.m.soll;
   $("#blick-foot").innerHTML = `Maßstäbe: Monats-Soll ${src.monthly_expense ? `${UI.money0(eurOf(src.monthly_expense))} (${esc(src.monthly_expense_source)})` : "–"} ·
     Fixkosten ${src.fixed ? `${UI.money0(eurOf(src.fixed))} / Monat (${esc(src.fixed_source)})` : "unbekannt"} · Tagesbudget ${src.daily ? UI.money0(eurOf(src.daily)) : "–"}.
@@ -352,46 +351,12 @@ function renderBlick() {
   badge.title = `${uncat} Buchungen ohne Kategorie`;
 }
 
-// ---------- Metapher-Bild „Landschaft“ (DESIGN.md §8)
-function renderScene(c) {
-  const d = dash.depot;
-  const over = c.cats.filter((x) => x.over);
-  const data = {
-    ausgaben: c.empty || c.sollMonth == null ? null : {
-      soll: c.sollMonth, ist: c.ist, sollToDate: c.sollToDate,
-      remainingText: c.sollMonth - c.ist >= 0 ? `${UI.money0(c.sollMonth - c.ist)} übrig` : `⚠ ${UI.money0(c.ist - c.sollMonth)} drüber`,
-      sub: (() => { const diff = c.ist - c.sollToDate; return `${UI.money0(Math.abs(diff))} ${diff > 0 ? "über" : "unter"} Plan`; })(),
-      sub2: UI.equiv(c.sollMonth - c.ist),
-      bad: c.ist - c.sollToDate > c.sollToDate * TOLERANCE,
-    },
-    sparquote: c.rate == null ? null : {
-      rate: Math.max(0, c.rate), soll: c.sollRate, sollText: UI.pct(c.sollRate), bad: c.rate < c.sollRate,
-      text: `${c.rate < c.sollRate ? "⚠ " : ""}${UI.pct(c.rate)}`, sub: `Überschuss ${UI.money0(c.income - c.expense)}`, sub2: UI.equiv(c.income - c.expense),
-    },
-    kategorien: {
-      over: over.map((x) => ({ name: x.name, devText: UI.money0(x.dev) })),
-      text: c.empty ? "Keine Daten" : over.length ? `${over.length} über Soll` : "Alles im Rahmen",
-      sub: over.length ? `zusammen ${UI.money0(over.reduce((s, x) => s + x.dev, 0))} drüber` : "keine Kategorie über ihrem Soll",
-    },
-    depot: d && d.count ? {
-      value: d.value, invested: d.invested, investedText: UI.money0(d.invested), bad: d.value < d.invested,
-      text: `${d.value < d.invested ? "⚠ " : ""}${UI.money0(d.value)}`, sub: `${UI.signed(d.value - d.invested)} ggü. Einzahlungen`, sub2: UI.equiv(d.value),
-    } : null,
-  };
-  Scene.mount($("#scene"), Scene.finance(data), (key, el) => (key === "depot" ? UI.zoomTo("sparplan.html", el) : zoom.open(key, 2, el)));
-}
-
-// Standard: Bild; auf schmalen Bildschirmen Kacheln, weil das Bild dort zu klein zum Lesen wäre
-let blickMode = (() => {
-  const fallback = matchMedia("(max-width: 700px)").matches ? "kacheln" : "bild";
-  try { return localStorage.getItem("blickMode") || fallback; } catch { return fallback; }
-})();
-function applyBlickMode(enter = false) {
-  $("#scene").hidden = blickMode !== "bild";
-  $("#blick").hidden = blickMode !== "kacheln";
-  $$("#view-switch button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === blickMode)));
-  $$("#view-switch button").forEach((b) => b.classList.toggle("active", b.dataset.mode === blickMode));
-  if (enter && blickMode === "kacheln") UI.enter($$("#blick .blick-tile"));
+/** Kacheln beim ersten Zeichnen gestaffelt hereinschweben lassen. */
+function enterTiles(first) {
+  if (!first) return;
+  UI.enter($$("#blick .blick-tile"));
+  UI.fillTracks($("#blick"));
+  UI.countUp($("#blick"), ".verdict, .facts b");
 }
 
 // ---------- Diagramme in den Zoom-Ebenen
@@ -501,9 +466,9 @@ function focusAusgaben(body) {
         `<div style="color:${t.muted}">${UI.equiv(v)}</div>`;
     } },
     series: [{
-      type: "bar", barMaxWidth: 26,
+      type: "bar", ...UI.barAnim(), barMaxWidth: 26,
       data: values.map((v, i) => ({ value: v, itemStyle: { borderRadius: [4, 4, 0, 0],
-        color: months[i] === dash.ym ? UI.alpha(t.violet, 0.35) : c.sollMonth && v > c.sollMonth * (1 + TOLERANCE) ? t.bad : t.violet,
+        color: months[i] === dash.ym ? UI.alpha(t.violet, 0.35) : c.sollMonth && v > c.sollMonth * (1 + TOLERANCE) ? t.bad : UI.barFill(t.violet),
         borderColor: months[i] === dash.ym ? t.violet : "transparent", borderType: "dashed" } })),
       markLine: c.sollMonth ? { symbol: "none", silent: true, data: [{ yAxis: c.sollMonth }], lineStyle: { color: t.ink1, type: "dashed", width: 1.5 },
         label: { formatter: `Soll ${UI.moneyShort(c.sollMonth)}`, color: t.text, position: "insideEndTop", fontSize: 11.5 } } : undefined,
@@ -610,8 +575,8 @@ function focusSparquote(body) {
       return `<b>${monthLong(months[i])}</b>` + UI.tipRow(UI.mark(t.teal), "Sparquote", rates[i] == null ? "–" : UI.pct(rates[i])) +
         UI.tipRow("", "Überschuss", money0(x.net)) + UI.tipRow(UI.mark(t.ink1, true), "Soll", UI.pct(c.sollRate));
     } },
-    series: [{ type: "bar", barMaxWidth: 26,
-      data: rates.map((v) => ({ value: v, itemStyle: { color: v != null && v < c.sollRate ? t.bad : t.teal, borderRadius: v >= 0 ? [4, 4, 0, 0] : [0, 0, 4, 4] } })),
+    series: [{ type: "bar", ...UI.barAnim(), barMaxWidth: 26,
+      data: rates.map((v) => ({ value: v, itemStyle: { color: v != null && v < c.sollRate ? t.bad : UI.barFill(t.teal), borderRadius: v >= 0 ? [4, 4, 0, 0] : [0, 0, 4, 4] } })),
       markLine: { symbol: "none", silent: true, data: [{ yAxis: c.sollRate }], lineStyle: { color: t.ink1, type: "dashed", width: 1.5 },
         label: { formatter: `Soll ${UI.pct(c.sollRate)}`, color: t.text, position: "insideEndTop", fontSize: 11.5 } } }],
   });
@@ -697,8 +662,8 @@ function focusKategorien(body) {
         axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: t.text2, fontSize: 12, fontWeight: 500 } },
     ],
     series: [
-      { type: "bar", barMaxWidth: 16, cursor: "pointer",
-        data: list.map((x) => ({ value: x.ist, itemStyle: { color: x.over ? t.bad : x.id === dash.selectedCat ? t.sky : UI.alpha(t.sky, 0.55), borderRadius: [0, 6, 6, 0] } })) },
+      { type: "bar", ...UI.barAnim(), barMaxWidth: 16, cursor: "pointer",
+        data: list.map((x) => ({ value: x.ist, itemStyle: { color: x.over ? t.bad : x.id === dash.selectedCat ? UI.barFill(t.sky, true) : UI.alpha(t.sky, 0.45), borderRadius: [0, 6, 6, 0] } })) },
       { type: "scatter", symbol: "rect", symbolSize: [3, 24], z: 5, silent: true, itemStyle: { color: t.ink1 },
         data: list.map((x) => (x.toDate != null ? x.toDate : null)) },
     ],
@@ -725,8 +690,8 @@ function renderCatTrend(body) {
     tooltip: { ...UI.chartBase(t).tooltip, axisPointer: { type: "shadow", shadowStyle: { color: t.grid, opacity: 0.4 } },
       formatter: (ps) => `<b>${monthLong(months[ps[0].dataIndex])}</b>` + UI.tipRow(UI.mark(t.sky), x.name, money0(values[ps[0].dataIndex] * 100)) +
         (x.soll ? UI.tipRow(UI.mark(t.ink1, true), "Soll", money0(x.soll * 100)) : "") },
-    series: [{ type: "bar", barMaxWidth: 24,
-      data: values.map((v, i) => ({ value: v, itemStyle: { borderRadius: [4, 4, 0, 0], color: months[i] === dash.ym ? UI.alpha(t.sky, 0.35) : x.soll && v > x.soll * (1 + TOLERANCE) ? t.bad : t.sky } })),
+    series: [{ type: "bar", ...UI.barAnim(), barMaxWidth: 24,
+      data: values.map((v, i) => ({ value: v, itemStyle: { borderRadius: [4, 4, 0, 0], color: months[i] === dash.ym ? UI.alpha(t.sky, 0.35) : x.soll && v > x.soll * (1 + TOLERANCE) ? t.bad : UI.barFill(t.sky) } })),
       markLine: x.soll ? { symbol: "none", silent: true, data: [{ yAxis: x.soll }], lineStyle: { color: t.ink1, type: "dashed", width: 1.5 },
         label: { formatter: `Soll ${UI.moneyShort(x.soll)}`, color: t.text, position: "insideEndTop", fontSize: 11.5 } } : undefined }],
   }, true);
@@ -1076,11 +1041,6 @@ function wire() {
     const el = e.target.closest(".blick-tile");
     if (el && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openTile(el); }
   });
-  $$("#view-switch button").forEach((b) => (b.onclick = () => {
-    blickMode = b.dataset.mode;
-    try { localStorage.setItem("blickMode", blickMode); } catch { /* egal */ }
-    applyBlickMode(true);
-  }));
   $("#crumbs").addEventListener("click", (e) => {
     const a = e.target.closest("[data-home], [data-return]");
     if (!a || state.view === "dashboard") return;
