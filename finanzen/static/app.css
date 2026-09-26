@@ -1089,3 +1089,4 @@ body.review-open { overflow: hidden; }
 .lf .lf-film { fill: none; stroke: color-mix(in srgb, var(--flow-in) 50%, var(--text-primary)); stroke-width: .6; opacity: .32; pointer-events: none; }
 .lf .lf-bundle.pulse path { stroke-width: 1.1; }
 .lf .lf-lake { cursor: pointer; }
+.month-step button:disabled { opacity: .4; cursor: default; }

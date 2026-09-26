@@ -91,8 +91,26 @@ function setPeriod(period, from, to) {
   $("#date-from").value = state.from;
   $("#date-to").value = state.to;
   $$("#period-presets button").forEach((b) => b.classList.toggle("active", b.dataset.period === period));
+  updateMonthStep();
   saveUrl();
   refreshCurrent();
+}
+
+/** Einen (Gehalts-)Monat zurück bzw. vor. Aus einem längeren Zeitraum geht es vom letzten Monat darin aus. */
+function stepMonth(dir) {
+  const cur = monthOf(computePeriod("month")[0]);
+  const target = shiftMonth(monthOf(state.to || computePeriod("month")[1]), dir);
+  if (target > cur || (state.status?.min && monthRange(target)[1] < state.status.min)) return;
+  if (target === cur) return setPeriod("month");
+  if (target === shiftMonth(cur, -1)) return setPeriod("lastmonth");
+  const [from, to] = monthRange(target);
+  setPeriod("custom", from, to);
+}
+function updateMonthStep() {
+  if (!state.to) return;
+  const cur = monthOf(computePeriod("month")[0]), base = monthOf(state.to);
+  $("#month-next").disabled = shiftMonth(base, 1) > cur;
+  $("#month-prev").disabled = !!state.status?.min && monthRange(shiftMonth(base, -1))[1] < state.status.min;
 }
 
 function filterQuery(extra = {}) {
@@ -1118,6 +1136,7 @@ function goToTransactions({ from, to, category = "", direction = "", q = "" }) {
     $("#date-from").value = from;
     $("#date-to").value = to;
     $$("#period-presets button").forEach((b) => b.classList.remove("active"));
+    updateMonthStep();
   }
   $("#tx-category").value = String(category);
   $("#tx-direction").value = direction;
@@ -1516,6 +1535,8 @@ function wire() {
     if (back) zoom.open(back.key, back.level, null, false);
   });
   $$("#period-presets button").forEach((b) => (b.onclick = () => setPeriod(b.dataset.period)));
+  $("#month-prev").onclick = () => stepMonth(-1);
+  $("#month-next").onclick = () => stepMonth(1);
   const customRange = () => {
     if ($("#date-from").value && $("#date-to").value) setPeriod("custom", $("#date-from").value, $("#date-to").value);
   };
@@ -1647,6 +1668,7 @@ async function init() {
   $("#date-from").value = state.from || "";
   $("#date-to").value = state.to || "";
   $$("#period-presets button").forEach((b) => b.classList.toggle("active", b.dataset.period === period));
+  updateMonthStep();
   showView(state.view);
   if (state.view === "dashboard" && zoomHash.includes("/")) {
     history.replaceState(null, "", `${location.pathname}${location.search}#${zoomHash}`);

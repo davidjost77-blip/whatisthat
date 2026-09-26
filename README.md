@@ -164,7 +164,8 @@ Gestaltet nach **[DESIGN.md](DESIGN.md)** (verbindlich, Stand 8): wählbares Far
 Rot nur für Warnungen, Schrift Inter, Umschalter Hell/Dunkel/System, Bewegung in allen Teilen, jede Zahl mit Soll-Wert
 und Alltagsäquivalent.
 
-Die Startseite zeigt alles auf einen Blick, geordnet nach Wichtigkeit, und folgt der Filterleiste (Zeitraum, Konto):
+Die Startseite zeigt alles auf einen Blick, geordnet nach Wichtigkeit, und folgt der Filterleiste (Zeitraum, Konto).
+Mit **‹ Monat zurück** und **Monat vor ›** springst du Gehaltsmonat für Gehaltsmonat durch die Vergangenheit:
 
 1. **Kennzahlen**: neues Einkommen, Ausgaben (Anteil vom neuen Einkommen, gegen den anteiligen Plan), Differenz
    (mit eingeschalteten Rücklagen inkl. Übertrag aus dem Vergleichszeitraum), Sparquote (gegen dein Sparziel)
