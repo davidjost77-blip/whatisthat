@@ -763,8 +763,13 @@ function expectedNet(d, net, saving, plan = planStatus(d)) {
 }
 /** „429 € unter Plan“ / „37 € über Plan“ – Vorzeichen sind hier missverständlich. */
 const planWord = (v) => `${UI.money0(Math.abs(v))} ${v >= 0 ? "unter" : "über"} Plan`;
-// Rücklagen = nur das Plus aus dem Vergleichszeitraum fließt links zu; ein Minus wird nicht gegengerechnet
-const carryOf = (d) => { const c = carryInfo(d); return PREFS.carry && c?.complete && c.value > 0 ? c : null; };
+/** Rücklagen an + Kontostand bekannt: See und Kennzahl zeigen den echten Kontostand statt nur das Monatsergebnis. */
+const balanceOf = (d) => (PREFS.carry && d.account_balance ? {
+  start: eurOf(d.account_balance.start), end: eurOf(d.account_balance.end),
+  startDate: d.account_balance.start_date, endDate: d.account_balance.end_date, missing: d.account_balance.missing,
+} : null);
+// Rücklagen ohne bekannten Kontostand: nur das Plus aus dem Vergleichszeitraum fließt links zu
+const carryOf = (d) => { const c = carryInfo(d); return PREFS.carry && !d.account_balance && c?.complete && c.value > 0 ? c : null; };
 
 /** Anteiliger Plan im Zeitraum: Fixkosten zählen ab Monatsbeginn voll, der Rest gleichmäßig über die Tage. */
 function planStatus(d) {
@@ -802,6 +807,7 @@ function renderKpis(d) {
   const share = income > 0 ? (expense / income) * 100 : null;
   const overShare = share != null && share > 100 - sollRate;
   const diff = income - expense - saving;
+  const bal = balanceOf(d);
   const carry = carryOf(d);
   const net = diff + (carry?.value || 0);
   const lowRate = k.savings_rate != null && k.savings_rate < sollRate;
@@ -812,6 +818,10 @@ function renderKpis(d) {
       sub: `${share == null ? "" : `<span class="${overShare ? "sig-bad" : ""}">${UI.pct(share, 0)} vom neuen Einkommen</span> · `}${planText || deltaText(k.expense, prev.expense, false)}`,
       bar: share == null ? "" : `<div class="spent-bar" title="Anteil des neuen Einkommens, der ausgegeben wurde; Strich = Plan höchstens ${100 - sollRate} %"><i style="width:${Math.min(100, share)}%"></i><b style="left:${100 - sollRate}%"></b></div>`,
       spark: m.map((x) => x.expense) },
+    bal ? { label: `Kontostand am ${dateDe(bal.endDate).slice(0, 6)}`, value: UI.money0(bal.end), tone: bal.end >= 0 ? "in-tone" : "out-tone", bad: bal.end < 0,
+      sub: `Monat ${UI.signed(diff)} · am ${dateDe(bal.startDate).slice(0, 6)}: ${UI.money0(bal.start)}` +
+        (plan.progress < 1 ? ` · <span class="${bal.end + expectedNet(d, 0, saving, plan) < 0 ? "sig-bad" : ""}">erwartet zum Ende ${UI.money0(bal.end + expectedNet(d, 0, saving, plan))}</span>` : ""),
+      spark: m.map((x) => x.net) } :
     { label: carry ? "Differenz inkl. Übertrag" : "Differenz", value: UI.signed(net), tone: net >= 0 ? "in-tone" : "out-tone",
       sub: (plan.progress < 1 ? `<span class="${expectedNet(d, net, saving, plan) < 0 ? "sig-bad" : ""}">erwartet zum Ende ${UI.signed(expectedNet(d, net, saving, plan))}</span> · ` : "") +
         (carry ? `${UI.signed(diff)} aus diesem Zeitraum · ${UI.signed(carry.value)} Übertrag aus ${esc(carry.from)}`
@@ -841,6 +851,7 @@ function renderFlow(d) {
   const savingLabel = f.saving ? (f.saving_parts.length === 1 ? `${f.saving_parts[0].name} & Depot` : "Sparen & Depot") : "Sparplan (Depot)";
   const expense = cats.reduce((s, c) => s + eurOf(c.amount), 0);
   const carryAll = carryInfo(d);
+  const bal = balanceOf(d);
   const carry = carryOf(d);
   const plus = carry ? carry.value : 0;
   const inflow = income + plus, outflow = expense + saving;
@@ -851,8 +862,13 @@ function renderFlow(d) {
   f.sources.forEach((s, i) => nodes.push({ id: `in${i}`, name: s.name, value: eurOf(s.amount), col: 0, click: true, cat: s.id,
     ...(s.id === 0 ? { kind: "review", cls: "review", sub: "⚑ zuordnen" } : { kind: "income" }) }));
   if (plus) nodes.push({ id: "carry", name: `Übertrag aus ${carry.from}`, value: plus, col: 0, cls: "carry-pos", kind: "carry", sub: "Plus" });
-  // Rücklagen an: Was fehlt, kommt aus dem Ersparten (Kontostand) und gleicht links aus. Aus: der See zeigt das Minus offen.
-  if (net < 0 && PREFS.carry) nodes.push({ id: "gap", name: "Aus Erspartem", value: -net, col: 0, cls: "rest", kind: "gap", sub: "vom Kontostand" });
+  // Rücklagen an: Was fehlt, kommt aus dem Ersparten und gleicht links aus – mit bekanntem Kontostand nur so weit,
+  // wie Geld da war; der Rest ist echtes Minus auf dem Konto. Rücklagen aus: der See zeigt das Minus offen.
+  if (net < 0 && PREFS.carry) {
+    const saved = bal ? Math.min(-net, Math.max(0, bal.start)) : -net;
+    if (saved > 0) nodes.push({ id: "gap", name: "Aus Erspartem", value: saved, col: 0, cls: "rest", kind: "gap", sub: bal ? `von ${UI.money0(bal.start)}` : "vom Kontostand" });
+    if (-net - saved > 0) nodes.push({ id: "overdraft", name: "Konto im Minus", value: -net - saved, col: 0, cls: "carry-neg", kind: "gap", sub: "Dispo" });
+  }
   nodes.push({ id: "hub", name: "See", value: Math.max(inflow, outflow), col: 1 });
   for (const c of shown) {
     const soll = plan.soll.get(c.id) ?? null;
@@ -870,16 +886,20 @@ function renderFlow(d) {
   // Seefarbe nach dem erwarteten Ergebnis zum Ende des Zeitraums (inkl. Übertrag, wenn eingeschaltet):
   // deutlich im Plus = Einnahmenfarbe; je näher an null, desto mehr Ausgabenfarbe; im Minus klar Ausgabenfarbe.
   const expNet = expectedNet(d, net, saving, plan);
-  const score = Math.max(-1, Math.min(1, expNet / (base * 0.15)));
+  // mit bekanntem Kontostand: rot nur, wenn das Konto (erwartet) wirklich gegen null oder darunter geht
+  const expEnd = bal ? bal.end + expectedNet(d, 0, saving, plan) : null;
+  const score = Math.max(-1, Math.min(1, (bal ? expEnd : expNet) / (base * 0.15)));
   const lake = {
     left: "color-mix(in srgb, var(--flow-in) 45%, var(--mix-base))",
     right: "color-mix(in srgb, var(--flow-out) 45%, var(--mix-base))",
-    center: expNet >= 0
+    center: (bal ? expEnd : expNet) >= 0
       ? `color-mix(in srgb, color-mix(in oklab, var(--flow-out) ${Math.round(65 * (1 - score) ** 1.6)}%, var(--flow-in)) 88%, var(--lake-base))`
       : `color-mix(in srgb, var(--flow-out) ${Math.round(78 + 22 * -score)}%, var(--lake-base))`,
     mid: (0.5 - 0.3 * score).toFixed(2),
   };
   const carryNote = !PREFS.carry ? " · Rücklagen ausgeblendet"
+    : bal ? ` · Kontostand ${dateDe(bal.startDate).slice(0, 6)} ${UI.money0(bal.start)} → ${dateDe(bal.endDate).slice(0, 6)} ${UI.money0(bal.end)}${bal.missing.length ? ` (ohne ${bal.missing.join(", ")})` : ""}`
+    : !d.account_balance && PREFS.carry && net < 0 ? " · Kontostand unbekannt – unter Import › Kontostände eintragen"
     : carry ? ` · Übertrag aus ${carry.from} ${UI.signed(carry.value)}`
     : carryAll?.complete && carryAll.value <= 0 ? ` · kein Übertrag (${carryAll.from} ohne Plus)`
     : carryAll && !carryAll.complete ? " · kein Übertrag: Vergleichszeitraum nicht vollständig in den Daten" : "";
@@ -888,16 +908,24 @@ function renderFlow(d) {
     <span><i style="background:color-mix(in srgb, var(--flow-out) 60%, var(--mix-base))"></i>Ausgaben</span>
     <span><i style="background:var(--flow-out)"></i>steuerbar</span>
     ${carry ? `<span><i style="background:var(--carry-pos)"></i>Übertrag</span>` : ""}
-    <span class="muted">See: ${plan.progress < 1 ? "erwartetes Ergebnis zum Ende" : "Ergebnis"}${carry ? " inkl. Übertrag" : ""} – Einnahmenfarbe = im Plus, je näher an null desto röter, Ausgabenfarbe = im Minus</span>`;
+    <span class="muted">${bal ? `See: ${plan.progress < 1 ? "erwarteter " : ""}Kontostand zum Ende – Einnahmenfarbe, solange genug drauf ist; je näher an null desto röter; Ausgabenfarbe = Konto im Minus`
+      : `See: ${plan.progress < 1 ? "erwartetes Ergebnis zum Ende" : "Ergebnis"}${carry ? " inkl. Übertrag" : ""} – Einnahmenfarbe = im Plus, je näher an null desto röter, Ausgabenfarbe = im Minus`}</span>`;
   const lakeCtl = Flow.lake($("#flow"), { nodes }, {
     label: "Geldfluss: Einnahmen links münden in den See, Ausgaben und Sparen fließen rechts ab",
     format: (v) => UI.money0(v),
     lake,
     hubLines: [
-      { cls: "lf-k", text: carry ? "Differenz inkl. Übertrag" : "Differenz" },
-      { cls: "lf-v", text: UI.signed(net) },
-      { cls: "lf-s", text: `${UI.money0(inflow)} rein · ${UI.money0(outflow)} raus` },
-      ...(plan.progress < 1 ? [{ cls: "lf-s", text: `erwartet zum Ende: ${UI.signed(expNet)}` }] : []),
+      ...(bal ? [
+        { cls: "lf-k", text: `Kontostand am ${dateDe(bal.endDate).slice(0, 6)}` },
+        { cls: "lf-v", text: UI.money0(bal.end) },
+        { cls: "lf-s", text: `Monat ${UI.signed(net)} · ${UI.money0(inflow)} rein · ${UI.money0(outflow)} raus` },
+        ...(plan.progress < 1 ? [{ cls: "lf-s", text: `erwartet zum Ende: ${UI.money0(expEnd)}` }] : []),
+      ] : [
+        { cls: "lf-k", text: carry ? "Differenz inkl. Übertrag" : "Differenz" },
+        { cls: "lf-v", text: UI.signed(net) },
+        { cls: "lf-s", text: `${UI.money0(inflow)} rein · ${UI.money0(outflow)} raus` },
+        ...(plan.progress < 1 ? [{ cls: "lf-s", text: `erwartet zum Ende: ${UI.signed(expNet)}` }] : []),
+      ]),
       { cls: "lf-s", text: plan.vsPlan == null ? periodLabel() : `${planWord(plan.vsPlan)} (anteilig)` },
     ],
     detail: (x) => {
@@ -1494,6 +1522,7 @@ async function uploadFiles(files) {
 
 async function loadImportView() {
   window.BankUI?.render();
+  renderBalances();
   renderTransferCheck();
   $("#inbox-path").textContent = state.status?.inbox || "(Überwachung deaktiviert)";
   const rows = await api("GET", "/api/imports");
@@ -1508,6 +1537,28 @@ async function loadImportView() {
     toast(`${res.deleted_transactions} Buchungen entfernt`);
     await loadStatus();
     loadImportView();
+  }));
+}
+
+/** Kontostände je Konto: bekannt (Bank, CSV, von Hand) oder eintragen. Kreditkarten brauchen keinen Eintrag. */
+async function renderBalances() {
+  const box = $("#balances");
+  let rows;
+  try { rows = await api("GET", "/api/balances"); } catch { box.innerHTML = ""; return; }
+  const SRC = { manuell: "von dir eingetragen", bank: "von der Bank", csv: "aus dem Export" };
+  box.innerHTML = rows.map((r) => r.card && !r.anchor
+    ? `<div class="bal-row"><div><b>${esc(r.account)}</b><div class="meta">Kreditkarte – setzt sich über die Abrechnung auf null, kein Eintrag nötig${r.open ? ` · offen: ${money(r.open)}` : ""}</div></div></div>`
+    : `<form class="bal-row" data-account="${esc(r.account)}"><div><b>${esc(r.account)}</b>
+        <div class="meta">${r.anchor ? `heute: <b>${money(r.current)}</b> · ${SRC[r.anchor.source] || r.anchor.source} am ${dateDe(r.anchor.date)}` : `<b>Kontostand unbekannt</b> – einmal eintragen, den Rest rechnet die App aus den Buchungen`}</div></div>
+        <label class="bal-input">Stand heute <input type="text" inputmode="decimal" name="amount" placeholder="z. B. 4248,35" aria-label="Kontostand heute für ${esc(r.account)}"></label>
+        <button type="submit">Speichern</button></form>`).join("") || `<p class="empty-note">Noch keine Konten importiert.</p>`;
+  $$("#balances form").forEach((f) => (f.onsubmit = async (e) => {
+    e.preventDefault();
+    const amount = f.amount.value.trim().replace(/\./g, "").replace(",", ".");
+    if (!amount || isNaN(+amount)) { toast("Bitte einen Betrag eingeben, z. B. 4248,35", { error: true }); return; }
+    await api("PUT", "/api/balances", { account: f.dataset.account, amount: +amount, date: iso(new Date()) });
+    toast(`Kontostand für ${f.dataset.account} gespeichert`);
+    renderBalances();
   }));
 }
 

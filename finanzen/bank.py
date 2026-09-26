@@ -28,7 +28,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from . import db, importer, rules, transfers
+from . import balances, db, importer, rules, transfers
 
 log = logging.getLogger("finanzen.bank")
 
@@ -442,6 +442,26 @@ def fetch_transactions(client, uid, date_from):
     return out
 
 
+BALANCE_TYPES = ("CLBD", "ITBD", "XPCD", "ITAV", "CLAV", "OTHR")   # gebuchter Stand bevorzugt
+
+
+def store_balance(conn, client, acc, label, today):
+    """Aktuellen Kontostand abrufen und als Anker speichern (Fehler hier stören den Abruf nicht)."""
+    try:
+        res = client.call("GET", f"/accounts/{urllib.parse.quote(acc['uid'])}/balances")
+    except BankError:
+        return
+    items = res.get("balances") or []
+    items.sort(key=lambda b: BALANCE_TYPES.index(b.get("balance_type")) if b.get("balance_type") in BALANCE_TYPES else 99)
+    for b in items:
+        amt = (b.get("balance_amount") or {}).get("amount")
+        if amt is None:
+            continue
+        day = (b.get("reference_date") or today.isoformat())[:10]
+        balances.set_anchor(conn, label, day, round(float(amt) * 100), "bank")
+        return
+
+
 def sync(conn, key_dir, session_id=None, today=None):
     """Ruft neue Buchungen aller (oder einer) aktiven Sitzung ab."""
     client = Client(conn, key_dir)
@@ -464,6 +484,7 @@ def sync(conn, key_dir, session_id=None, today=None):
                     else:
                         raise
                 new, dup = store(conn, s, acc, raw)
+                store_balance(conn, client, acc, label, today)
                 res["new"] += new
                 res["duplicate"] += dup
                 res["accounts"].append({"name": acc.get("name") or label, "new": new})

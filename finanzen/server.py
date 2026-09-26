@@ -6,12 +6,13 @@ import json
 import logging
 import mimetypes
 import re
+from datetime import date, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import analytics, bank, cycles, db, depot, importer, ingest, review, rules, transfers
+from . import analytics, balances, bank, cycles, db, depot, importer, ingest, review, rules, transfers
 
 log = logging.getLogger("finanzen.server")
 STATIC_DIR = Path(__file__).parent / "static"
@@ -68,6 +69,8 @@ class App:
             ("POST", r"/api/rules/preview", self.preview_rule),
             ("POST", r"/api/rules/apply", self.apply_rules),
             ("GET", r"/api/transfers", self.transfer_check),
+            ("GET", r"/api/balances", self.list_balances),
+            ("PUT", r"/api/balances", self.set_balance),
             ("POST", r"/api/import", self.import_file),
             ("GET", r"/api/imports", self.list_imports),
             ("DELETE", r"/api/imports/(\d+)", self.delete_import),
@@ -135,7 +138,28 @@ class App:
             data["flow"]["depot"] = conn.execute(
                 "SELECT COALESCE(SUM(amount), 0) FROM depot_tx WHERE date BETWEEN ? AND ?", (rng["from"], rng["to"])
             ).fetchone()[0]
+            # Echter Kontostand (wenn bekannt): am Tag vor dem Zeitraum und am Ende (bzw. heute im laufenden Zeitraum)
+            if balances.anchors(conn):
+                accs = q.get("account")
+                start_day = (date.fromisoformat(rng["from"]) - timedelta(days=1)).isoformat()
+                end_day = min(rng["to"], date.today().isoformat())
+                start, end = balances.balance_at(conn, start_day, accs), balances.balance_at(conn, end_day, accs)
+                data["account_balance"] = {"start": start["value"], "start_date": start_day, "end": end["value"], "end_date": end_day,
+                                           "known": [k["account"] for k in end["known"]], "cards": [c["account"] for c in end["cards"]],
+                                           "missing": end["missing"]}
         return data
+
+    def list_balances(self, conn, req):
+        return balances.overview(conn)
+
+    def set_balance(self, conn, req):
+        body = req.json()
+        account = (body.get("account") or "").strip()
+        if not account or not conn.execute("SELECT 1 FROM transactions WHERE account = ? LIMIT 1", (account,)).fetchone():
+            raise ApiError("Unbekanntes Konto.")
+        day = body.get("date") or date.today().isoformat()
+        balances.set_anchor(conn, account, day, euro_to_cents(body.get("amount")), "manuell")
+        return {"ok": True, "balances": balances.overview(conn)}
 
     def category_flow(self, conn, req):
         q = req.query

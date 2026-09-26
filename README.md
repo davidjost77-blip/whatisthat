@@ -127,6 +127,17 @@ die Spaltennamen deiner Datei eintragen. Verfügbare Felder: `date`, `amount` (o
 Beim ersten Start wird ein Satz typischer deutscher Kategorien samt Regeln angelegt (Supermärkte, Tankstellen,
 Streaming, Versicherungen …) und für vier Kategorien ein Beispiel-Budget gesetzt. Alles davon kannst du ändern oder löschen.
 
+### Kontostand: Rücklagen = was wirklich auf dem Konto ist
+
+Unter *Import › Kontostände* trägst du einmal den heutigen Kontostand deines Girokontos ein – mit Bankanbindung oder
+einem DKB-Export („Kontostand vom …“) kommt er automatisch. Jeden anderen Tag rechnet die App aus den Buchungen.
+Kreditkarten brauchen keinen Eintrag: Sie stehen nach der Abrechnung wieder auf null; offene Käufe zählen automatisch.
+
+Mit eingeschalteten **Rücklagen** zeigt der Geldfluss dann den **Kontostand am Ende des Zeitraums**: Ein Monat mit
+mehr Ausgaben als Einnahmen wird links „Aus Erspartem“ ausgeglichen, der See bleibt blau, solange genug auf dem Konto
+ist, und wird erst rot, wenn das Konto (voraussichtlich) gegen null oder ins Minus geht – dann fließt links
+„Konto im Minus“ zu. Ohne Rücklagen zeigt der See nur das Ergebnis des Monats.
+
 ### Kreditkarten-Check: nichts doppelt, nichts verschwindet
 
 Nach jedem Import und Bankabruf (und beim Start) gleicht die App Kreditkartenabrechnungen vom Girokonto mit den

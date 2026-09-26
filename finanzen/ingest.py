@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import db, importer, rules, transfers
+from . import balances, db, importer, rules, transfers
 
 log = logging.getLogger("finanzen.ingest")
 
@@ -40,6 +40,8 @@ def import_bytes(conn, data, filename, profiles=(), account=None):
     )
     conn.commit()
     check = transfers.reconcile(conn) if new else None      # Kreditkartenabrechnungen gegen Kartenumsätze prüfen
+    if info.get("balance"):                                  # Kontostand aus dem Export → Anker
+        balances.set_anchor(conn, info["account"], info["balance"]["date"], info["balance"]["amount"], "csv")
     dates = sorted(tx["date"] for tx in transactions)
     return {
         **info,

@@ -51,6 +51,10 @@ class FakeApi:
             if "continuation_key=page2" in path:
                 return {"transactions": self.transactions["acc-1"][2:]}
             return {"transactions": self.transactions["acc-1"][:2], "continuation_key": "page2"}
+        if path == "/accounts/acc-1/balances":
+            return {"balances": [{"balance_amount": {"amount": "1234.56", "currency": "EUR"}, "balance_type": "ITAV"},
+                                 {"balance_amount": {"amount": "1200.00", "currency": "EUR"}, "balance_type": "CLBD",
+                                  "reference_date": "2026-09-25"}]}
         if path.startswith("/sessions/"):
             return {}
         raise AssertionError(f"unerwarteter Aufruf {method} {path}")
@@ -125,6 +129,8 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(rows["Arbeitgeber GmbH"]["amount"], 310000)
         self.assertIn("Zalando SE", rows)                        # PayPal → eigentlicher Händler
         self.assertIsNotNone(rows["REWE Markt GmbH"]["category_id"])   # Regeln greifen
+        anchor = self.conn.execute("SELECT account, date, amount, source FROM balances").fetchone()   # gebuchter Stand bevorzugt
+        self.assertEqual(tuple(anchor), ("DE02120300000000202051", "2026-09-25", 120000, "bank"))
         again = bank.sync(self.conn, key_dir, today=date(2026, 9, 26))
         self.assertEqual((again[0]["new"], again[0]["duplicate"]), (0, 3))
         st = bank.status(self.conn, key_dir)

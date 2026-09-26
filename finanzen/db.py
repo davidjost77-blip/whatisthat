@@ -143,9 +143,13 @@ def connect(path):
     return conn
 
 
+from .balances import SCHEMA as BALANCES_SCHEMA  # noqa: E402  (Kontostände)
+
+
 def init_db(path, seed=True):
     conn = connect(path)
     conn.executescript(SCHEMA)
+    conn.executescript(BALANCES_SCHEMA)
     migrate(conn)
     if seed and conn.execute("SELECT COUNT(*) FROM categories").fetchone()[0] == 0:
         seed_defaults(conn)
