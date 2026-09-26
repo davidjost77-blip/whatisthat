@@ -170,14 +170,16 @@ class App:
                 "SELECT COALESCE(SUM(amount), 0) FROM depot_tx WHERE date BETWEEN ? AND ?", (rng["from"], rng["to"])
             ).fetchone()[0]
             # Echter Kontostand (wenn bekannt): am Tag vor dem Zeitraum und am Ende (bzw. heute im laufenden Zeitraum)
-            if balances.anchors(conn):
-                accs = q.get("account")
-                start_day = (date.fromisoformat(rng["from"]) - timedelta(days=1)).isoformat()
-                end_day = min(rng["to"], date.today().isoformat())
-                start, end = balances.balance_at(conn, start_day, accs), balances.balance_at(conn, end_day, accs)
+            # Nur wenn für mindestens ein zählendes Konto (kein Kreditkartenkonto) ein Stand bekannt ist – sonst stünde
+            # hier 0 € und das Monats-Minus sähe aus wie ein Konto im Minus.
+            accs = q.get("account")
+            start_day = (date.fromisoformat(rng["from"]) - timedelta(days=1)).isoformat()
+            end_day = min(rng["to"], date.today().isoformat())
+            start, end = balances.balance_at(conn, start_day, accs), balances.balance_at(conn, end_day, accs)
+            if end["known"]:
                 data["account_balance"] = {"start": start["value"], "start_date": start_day, "end": end["value"], "end_date": end_day,
-                                           "known": [k["account"] for k in end["known"]], "cards": end["cards"],
-                                           "missing": end["missing"], "explain": {"start": start["known"], "end": end["known"]}}
+                                               "known": [k["account"] for k in end["known"]], "cards": end["cards"],
+                                               "missing": end["missing"], "explain": {"start": start["known"], "end": end["known"]}}
         return data
 
     def shutdown(self, conn, req):

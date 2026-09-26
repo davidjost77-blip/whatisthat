@@ -916,17 +916,19 @@ function renderFlow(d) {
   const score = PREFS.carry
     ? Math.max(-1, Math.min(1, (bal ? expEnd : expNet) / (base * 0.15)))
     : Math.max(-1, Math.min(1, (1 - spentShare) / Math.max(0.1, sollRate / 100 + 0.1)));
+  // Rücklagen an, aber Kontostand unbekannt: nicht rot färben – das Minus des Monats wird ja aus dem Ersparten gedeckt
+  const unknownBalance = PREFS.carry && !bal;
   const lake = {
     left: "color-mix(in srgb, var(--flow-in) 45%, var(--mix-base))",
     right: "color-mix(in srgb, var(--flow-out) 45%, var(--mix-base))",
-    center: score >= 0
+    center: unknownBalance ? "color-mix(in srgb, var(--flow-in) 30%, var(--lake-base))" : score >= 0
       ? `color-mix(in srgb, color-mix(in oklab, var(--flow-out) ${Math.round(55 * (1 - score) ** 1.8)}%, var(--flow-in)) 88%, var(--lake-base))`
       : `color-mix(in srgb, var(--flow-out) ${Math.round(80 + 20 * -score)}%, var(--lake-base))`,
-    mid: (0.5 - 0.3 * score).toFixed(2),
+    mid: unknownBalance ? "0.5" : (0.5 - 0.3 * score).toFixed(2),
   };
   const carryNote = !PREFS.carry ? " · Rücklagen ausgeblendet"
     : bal ? ` · Kontostand ${dateDe(bal.startDate).slice(0, 6)} ${UI.money0(bal.start)} → ${dateDe(bal.endDate).slice(0, 6)} ${UI.money0(bal.end)}${bal.missing.length ? ` (ohne ${bal.missing.join(", ")})` : ""}`
-    : !d.account_balance && PREFS.carry && net < 0 ? " · Kontostand unbekannt – unter Import › Kontostände eintragen"
+    : !d.account_balance && PREFS.carry && net < 0 ? " · Kontostand unbekannt – oben eintragen"
     : carry ? ` · Übertrag aus ${carry.from} ${UI.signed(carry.value)}`
     : carryAll?.complete && carryAll.value <= 0 ? ` · kein Übertrag (${carryAll.from} ohne Plus)`
     : carryAll && !carryAll.complete ? " · kein Übertrag: Vergleichszeitraum nicht vollständig in den Daten" : "";
@@ -949,6 +951,11 @@ function renderFlow(d) {
         { cls: "lf-v", text: UI.money0(bal.end) },
         { cls: "lf-s", text: `Monat ${UI.signed(net)} · ${UI.money0(inflow)} rein · ${UI.money0(outflow)} raus` },
         ...(plan.progress < 1 ? [{ cls: "lf-s", text: `erwartet zum Ende: ${UI.money0(expEnd)}` }] : []),
+      ] : unknownBalance && net < 0 ? [
+        { cls: "lf-k", text: "Kontostand unbekannt" },
+        { cls: "lf-v", text: "?" },
+        { cls: "lf-s", text: `Monat ${UI.signed(net)} · aus dem Ersparten gedeckt` },
+        { cls: "lf-s", text: "oben eintragen, dann steht hier dein Kontostand" },
       ] : [
         { cls: "lf-k", text: carry ? "Differenz inkl. Übertrag" : "Differenz" },
         { cls: "lf-v", text: UI.signed(net) },
@@ -982,7 +989,8 @@ function renderFlow(d) {
 function renderBalancePrompt(d) {
   const box = $("#balance-prompt");
   if (!PREFS.carry || d.account_balance) { box.hidden = true; box.innerHTML = ""; return; }
-  const accounts = (state.status?.accounts || []).map((a) => a.account).filter((a) => !/kredit|visa|master|card|karte|amex/i.test(a));
+  const accounts = (state.status?.accounts || []).sort((a, b) => b.count - a.count).map((a) => a.account)
+    .filter((a) => !/kredit|visa|master|card|karte|amex/i.test(a) && !/\d{4}\s*[•*·xX.]{2,}[\s•*·xX.\d]*\d{4}/.test(a));
   if (!accounts.length) { box.hidden = true; return; }
   box.hidden = false;
   box.innerHTML = `<form class="balance-prompt"><span>Damit der See deinen echten Kontostand zeigt: Wie viel ist <b>heute</b> auf dem Konto?</span>

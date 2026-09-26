@@ -62,6 +62,21 @@ class BalanceTests(unittest.TestCase):
         self.assertEqual(balances.balance_at(self.conn, "2026-09-26")["value"], 424835)
         self.assertEqual(balances.balance_at(self.conn, "2026-08-24")["value"], 424835 - 300000 + 100000 - 300000)
 
+    def test_only_card_saldo_known_means_no_balance_view(self):
+        """Nur der Kartensaldo aus dem Export bekannt → keine Kontostand-Ansicht (sonst: Girokonto 0 €, See rot)."""
+        from finanzen import depot
+        from finanzen.server import App
+        depot.init(self.conn)
+        ingest.import_bytes(self.conn, ('"Karte";"Visa Kreditkarte";"4930 •••• 3767"\n""\n"Saldo vom 23.09.2026:";"-1.234,56 EUR"\n""\n'
+                                        '"Belegdatum";"Wertstellung";"Status";"Beschreibung";"Umsatztyp";"Betrag (€)"\n'
+                                        '"17.09.26";"18.09.26";"Gebucht";"UBER   *EATS";"Onlinezahlung";"-24,36"\n').encode("utf-8-sig"), "karte.csv")
+        app = App.__new__(App)
+        req = type("R", (), {"query": {"from": ["2026-08-25"], "to": ["2026-09-24"]}})()
+        self.assertNotIn("account_balance", App.dashboard(app, self.conn, req))
+        balances.set_anchor(self.conn, "girokonto", "2026-09-26", 424835)
+        data = App.dashboard(app, self.conn, req)
+        self.assertEqual(data["account_balance"]["end"], 424835 - 300000)       # Stand am 24.09.: vor dem Gehalt am 25.09.
+
     def test_balance_from_csv_preamble(self):
         rows = [['"Kontostand vom 26.09.2026:"', "4.248,35 €"]]
         rows = [[c.strip('"') for c in r] for r in rows]
