@@ -210,6 +210,7 @@ async function loadDashboard() {
     ]);
     Object.assign(dash, { m, period, cur, year, depot, ym, ref: m.ref });
     renderStart();
+    window.Review?.refreshBar();
     if (zoom.level > 1) await zoom.refresh();
   } catch (e) {
     toast(`Übersicht konnte nicht geladen werden: ${e.message}`, { error: true });
@@ -735,7 +736,8 @@ function renderFlow(d) {
   const left = income - outflow;
   const nodes = [], links = [];
   f.sources.forEach((s, i) => {
-    nodes.push({ id: `in${i}`, name: s.name, value: eurOf(s.amount), col: 0, click: true, cat: s.id, kind: "income" });
+    nodes.push({ id: `in${i}`, name: s.name, value: eurOf(s.amount), col: 0, click: true, cat: s.id,
+      ...(s.id === 0 ? { kind: "review", sub: "⚑ zuordnen" } : { kind: "income" }) });
     links.push({ from: `in${i}`, to: "hub", value: eurOf(s.amount) });
   });
   if (left < 0) {
@@ -747,8 +749,8 @@ function renderFlow(d) {
     const soll = catSoll(c.id);
     const v = eurOf(c.amount);
     const bad = soll != null && v > soll * (1 + TOLERANCE) && v - soll >= 5;
-    nodes.push({ id: `c${c.id}`, name: c.name, value: v, col: 2, cls: bad ? "bad" : "", click: true, cat: c.id, kind: "expense", soll,
-      sub: bad ? `⚠ +${UI.money0(v - soll)}` : `${UI.pct((v / (income || outflow)) * 100, 0)}` });
+    nodes.push({ id: `c${c.id}`, name: c.name, value: v, col: 2, cls: bad ? "bad" : "", click: true, cat: c.id, kind: c.id === 0 ? "review" : "expense", soll,
+      sub: c.id === 0 ? "⚑ zuordnen" : bad ? `⚠ +${UI.money0(v - soll)}` : `${UI.pct((v / (income || outflow)) * 100, 0)}` });
     links.push({ from: "hub", to: `c${c.id}`, value: v, cls: bad ? "bad" : "" });
   }
   if (rest.length) {
@@ -772,11 +774,12 @@ function renderFlow(d) {
     detail: (x, type, from, to) => {
       if (type === "node") {
         const soll = x.soll != null ? `<br>Soll ${UI.money0(x.soll)}${x.value > x.soll ? ` · <span class="sig-bad">⚠ ${UI.money0(x.value - x.soll)} drüber</span>` : ""}` : "";
-        return `<b>${esc(x.name)}</b> · ${UI.money0(x.value)}<br><span class="muted">${UI.equiv(x.value)}</span>${soll}${x.click ? `<br><span class="muted">Klick: ${x.kind === "save" ? "zum Sparplan" : x.kind === "income" ? "Umsätze zeigen" : "Zusammensetzung"}</span>` : ""}`;
+        return `<b>${esc(x.name)}</b> · ${UI.money0(x.value)}<br><span class="muted">${UI.equiv(x.value)}</span>${soll}${x.click ? `<br><span class="muted">Klick: ${x.kind === "save" ? "zum Sparplan" : x.kind === "review" ? "jetzt zuordnen" : x.kind === "income" ? "Umsätze zeigen" : "Zusammensetzung"}</span>` : ""}`;
       }
       return `${esc(from.name)} → <b>${esc(to.name)}</b><br>${UI.money0(x.value)} · <span class="muted">${UI.equiv(x.value)}</span>`;
     },
     onClick: (n, el) => {
+      if (n.kind === "review") return window.Review?.open();
       if (n.kind === "save") return UI.zoomTo("sparplan.html", el);
       if (n.kind === "income") return goToTransactions({ from: dash.period.range.from, to: dash.period.range.to, category: n.cat || "", direction: "in" });
       dash.flowCat = n.cat;

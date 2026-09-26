@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import analytics, bank, db, depot, importer, ingest, rules
+from . import analytics, bank, db, depot, importer, ingest, review, rules
 
 log = logging.getLogger("finanzen.server")
 STATIC_DIR = Path(__file__).parent / "static"
@@ -79,6 +79,10 @@ class App:
             ("DELETE", r"/api/depot/tx/(\d+)", self.delete_depot_tx),
             ("GET", r"/api/quotes/chart", self.quote_chart),
             ("GET", r"/api/quotes/search", self.quote_search),
+            ("GET", r"/api/review", self.review_list),
+            ("POST", r"/api/review/assign", self.review_assign),
+            ("POST", r"/api/review/confirm", self.review_confirm),
+            ("POST", r"/api/review/undo", self.review_undo),
             ("GET", r"/api/bank", self.bank_status),
             ("PUT", r"/api/bank/config", self.bank_config),
             ("PUT", r"/api/bank/settings", self.bank_settings),
@@ -139,6 +143,36 @@ class App:
 
     def suggestions(self, conn, req):
         return analytics.uncategorized_groups(conn, int(req.query.get("limit", [30])[0]))
+
+    # ------------------------------------------------------------ Zuordnen (ohne Kategorie / unsicher)
+    def review_list(self, conn, req):
+        return review.review(conn)
+
+    def _review_body(self, conn, req):
+        body = req.json()
+        ids = [int(i) for i in body.get("ids", [])]
+        cid = body.get("category_id")
+        rule = body.get("rule") if isinstance(body.get("rule"), dict) else None
+        if rule and rule.get("op") == "regex" and rules.validate_pattern("regex", rule.get("pattern")):
+            rule = None
+        return body, ids, cid, rule
+
+    def review_assign(self, conn, req):
+        body, ids, cid, rule = self._review_body(conn, req)
+        if not cid:
+            raise ApiError("Bitte eine Kategorie wählen.")
+        self._check_category(conn, cid)
+        return review.assign(conn, ids, int(cid), rule, body.get("direction", "any"), bool(body.get("learn", True)))
+
+    def review_confirm(self, conn, req):
+        body, ids, cid, rule = self._review_body(conn, req)
+        if cid:
+            self._check_category(conn, cid)
+        return review.confirm(conn, ids, int(cid) if cid else None, rule, body.get("direction", "any"))
+
+    def review_undo(self, conn, req):
+        data = req.json().get("undo") or {}
+        return review.undo(conn, data)
 
     # ------------------------------------------------------------ Bankanbindung (Enable Banking)
     def _bank(self, fn, *args, **kw):

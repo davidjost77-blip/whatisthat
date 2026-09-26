@@ -127,6 +127,20 @@ die Spaltennamen deiner Datei eintragen. Verfügbare Felder: `date`, `amount` (o
 Beim ersten Start wird ein Satz typischer deutscher Kategorien samt Regeln angelegt (Supermärkte, Tankstellen,
 Streaming, Versicherungen …) und für vier Kategorien ein Beispiel-Budget gesetzt. Alles davon kannst du ändern oder löschen.
 
+### Zuordnen – ohne Kategorie und unsicher
+
+Über den Kennzahlen im Dashboard erscheint ein Hinweis, sobald etwas offen ist („⚠ 3 Buchungen ohne Kategorie“,
+„? 12 unsichere Zuordnungen“); auch „Nicht kategorisiert“ im Geldfluss ist anklickbar. Ein Klick öffnet ein kompaktes
+Panel: eine Karte nach der anderen, größter Betrag zuerst, gruppiert nach Empfänger.
+
+- **Enter** übernimmt den Vorschlag (aus früheren Zuordnungen ähnlicher Empfänger), **1–8** die häufigsten Kategorien,
+  Suchfeld für alle anderen, **+ Neu** legt eine Kategorie an. **S/→** überspringt, **←** zurück, **Esc** schließt.
+- Jede Entscheidung gilt für **alle ähnlichen** Buchungen – auch künftige (es wird eine Regel am Empfänger angelegt).
+  „Rückgängig“ im Hinweis macht Zuordnung und Regel vollständig rückgängig.
+- **Unsicher** markiert die App automatische Zuordnungen, wenn mehrere Regeln verschiedener Kategorien passen, wenn
+  nur der Verwendungszweck (nicht der Empfänger) passte oder wenn der Betrag weit über dem Üblichen des Empfängers
+  liegt. „Passt so“ bestätigt und merkt es sich; eine andere Kategorie korrigiert alle ähnlichen.
+
 ## Dashboards
 
 Gestaltet nach **[DESIGN.md](DESIGN.md)** (verbindlich, Stand 6): wählbares Farbschema (Standard „Papier & Bronze“, dazu Tinte, Graphit, Salbei), Geldfluss als See mit feinen Fäden,

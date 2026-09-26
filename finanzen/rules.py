@@ -14,6 +14,7 @@ class CompiledRule:
         self.direction = row["direction"]
         self.min_amount = row["min_amount"]
         self.max_amount = row["max_amount"]
+        self.priority = row["priority"] if "priority" in row.keys() else 100
         pattern = row["pattern"]
         if self.op == "regex":
             self.regex = re.compile(pattern, re.IGNORECASE)
