@@ -26,7 +26,8 @@
   // Frequenz nach Rayleigh (ω² ∝ n(n−1)(n+2)), Dämpfung nach Lamb (∝ (n−1)(2n+1)): feine Dellen verschwinden sofort,
   // übrig bleibt ein ruhiges Wabbeln. Der Zustand überdauert das Neuzeichnen (Live-Aktualisierung).
   const NMAX = 12;
-  const DROP = { period: 1.8, visc: 0.2, limit: 22 };
+  // gain: alle Stöße sehr leicht (Stand 10: „sehr, sehr leicht“); limit: größte Auslenkung in px
+  const DROP = { period: 2.2, visc: 0.3, limit: 8, gain: 0.12, film: 0.5 };
   const dA = new Float64Array(NMAX + 1), dB = new Float64Array(NMAX + 1), vA = new Float64Array(NMAX + 1), vB = new Float64Array(NMAX + 1);
   const omega = (n) => (2 * Math.PI / DROP.period) * Math.sqrt((n * (n - 1) * (n + 2)) / 8);
   const gamma = (n) => DROP.visc * ((n - 1) * (2 * n + 1)) / 5;
@@ -35,6 +36,7 @@
     let peak = 0;
     const c = [];
     for (let n = 2; n <= NMAX; n++) { c[n] = Math.exp(-((n * sig) ** 2) / 2); peak += c[n]; }
+    v *= DROP.gain;
     for (let n = 2; n <= NMAX; n++) { vA[n] += (v * c[n] / peak) * Math.cos(n * th); vB[n] += (v * c[n] / peak) * Math.sin(n * th); }
   }
   function stepDrop(dt) {
@@ -62,11 +64,14 @@
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     // lebendig: alle paar Sekunden ein kaum sichtbarer Hauch an zufälliger Stelle
-    if (now > nextBreath) { kickAt(Math.random() * 2 * Math.PI, (Math.random() < 0.5 ? -1 : 1) * (7 + Math.random() * 9), 0.5); nextBreath = now + 3500 + Math.random() * 5000; }
+    if (now > nextBreath) { kickAt(Math.random() * 2 * Math.PI, (Math.random() < 0.5 ? -1 : 1) * (15 + Math.random() * 15), 0.5); nextBreath = now + 3500 + Math.random() * 5000; }
     stepDrop(dt);
     frameNo++;
     // ruhiger See: seltener zeichnen (das Atmen ist langsam), bewegter See: jedes Bild
-    if (dropEnergy() > 40 || frameNo % 4 === 0) active.draw(dropAt, ((now - t0) / 13000) % 1);
+    // ruhiger See: Umriss seltener zeichnen; die feine Uferlinie (Fäden) jedes zweite Bild
+    const ph = ((now - t0) / 13000) % 1;
+    if (dropEnergy() > 4 || frameNo % 4 === 0) active.draw(dropAt, ph);
+    if (frameNo % 2 === 0) active.film(ph, (now - t0) / 1000);
     raf = requestAnimationFrame(loop);
   }
   function startLoop() { if (!raf && active) { last = performance.now(); t0 ||= last; raf = requestAnimationFrame(loop); } }
@@ -255,7 +260,6 @@
       <filter id="${id}b1" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="34"/></filter>
       <filter id="${id}b2" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="24"/></filter>
       <filter id="${id}b3" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="2"/></filter>
-      <filter id="${id}gl" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="7"/></filter>
       <mask id="${id}stop" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#fff"/><path d="${shore(STOP)}" fill="#000" filter="url(#${id}b1)"/></mask>
       <mask id="${id}est" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><path d="${shore(REACH)}" fill="#fff" filter="url(#${id}b2)"/></mask>
     </defs>`;
@@ -263,7 +267,7 @@
       <path class="lf-halo" d="${shore(8)}" filter="url(#${id}bh)" style="fill:${lk.center}">${breathe(8, 17)}</path>
       <path class="lf-water" d="${shore(0)}" fill="url(#${id}lr)" filter="url(#${id}bf)">${breathe(0, 13)}</path>
       <path class="lf-depth" d="${shore(-6)}" fill="url(#${id}depth)" filter="url(#${id}bf)">${breathe(-6, 13)}</path>
-      ${phys ? `<ellipse class="lf-gloss" filter="url(#${id}gl)" cx="${f1(CX - RX * 0.42)}" cy="${f1(CY - RY * 0.5)}" rx="${f1(RX * 0.28)}" ry="${f1(RY * 0.11)}" transform="rotate(-28 ${f1(CX - RX * 0.42)} ${f1(CY - RY * 0.5)})"/>` : ""}
+      ${phys ? `<path class="lf-film" d="${shore(0.6)}"/>` : ""}
       ${(opts.hubLines || [{ cls: "lf-k", text: hub.name }, { cls: "lf-v", text: fmt(hub.value) }, ...(opts.hubSub ? [{ cls: "lf-s", text: opts.hubSub }] : [])])
         .map((l, i, all) => `<text x="${CX}" y="${f1(CY + (i - (all.length - 1) / 2) * 21 + (l.cls === "lf-v" ? 8 : 4))}" class="${l.cls}" text-anchor="middle">${esc(l.text)}</text>`).join("")}</g>`;
 
@@ -319,15 +323,47 @@
       },
     };
     if (!phys) return ctl;
-    const halo = svg.querySelector(".lf-halo"), water = svg.querySelector(".lf-water"), depth = svg.querySelector(".lf-depth"), gloss = svg.querySelector(".lf-gloss");
-    const gx = CX - RX * 0.42, gy = CY - RY * 0.5;
+    const halo = svg.querySelector(".lf-halo"), water = svg.querySelector(".lf-water"), depth = svg.querySelector(".lf-depth"), filmEl = svg.querySelector(".lf-film");
+    // Feine Uferlinie: jeder Faden wölbt sie dort, wo er ankommt, um Bruchteile eines Pixels (Zufluss nach außen, Abfluss nach innen)
+    const wrapA = (d) => Math.atan2(Math.sin(d), Math.cos(d));
+    const mouths = rivers.map((r) => ({ th: rad(r.ang), dir: r.dir, span: (width(r.n.value) * (1 + 0.45 * FLARE)) / RX,
+      cnt: Math.max(1, Math.floor(r.g.ws[Math.floor(r.g.ws.length / 2)] / SPACING)) }));
+    const filmAngles = [];
+    for (let a = -Math.PI; a < Math.PI; a += 0.03) filmAngles.push(a);
+    for (const m of mouths) for (let d = -m.span * 0.6; d <= m.span * 0.6; d += 0.0035) filmAngles.push(wrapA(m.th + d));
+    filmAngles.sort((x, y) => x - y);
+    const micro = (th, t) => {
+      let sum = 0;
+      for (const m of mouths) {
+        const d0 = wrapA(th - m.th);
+        if (Math.abs(d0) > m.span * 0.6) continue;
+        const sig = (m.span / m.cnt) * 0.32;
+        for (let k = 0; k < m.cnt; k++) {
+          const dd = d0 - ((m.cnt === 1 ? 0 : (k / (m.cnt - 1)) * 2 - 1) * 0.9 * m.span) / 2;
+          if (Math.abs(dd) > sig * 3) continue;
+          const per = 1.6 + ((k * 7919 + m.cnt * 31) % 97) / 60, phase = ((k * 0.618 + m.th) % 1) * 2 * Math.PI;
+          const pulse = Math.pow(0.5 + 0.5 * Math.sin((2 * Math.PI * t) / per + phase), 3);   // Lichtstrich kommt an
+          sum += (m.dir === "in" ? 1 : -1) * DROP.film * (0.35 + 0.65 * pulse) * Math.exp(-((dd / sig) ** 2));
+        }
+      }
+      return sum;
+    };
+    const lobe = (a, c, sig, amp) => { const d = Math.atan2(Math.sin(a - rad(c)), Math.cos(a - rad(c))); return amp * Math.exp(-((d / sig) ** 2)); };
     active = {
       svg,
       draw(disp, ph) {
         halo.setAttribute("d", shore(8, ph, 72, disp));
         water.setAttribute("d", shore(0, ph, 96, disp));
         depth.setAttribute("d", shore(-6, ph, 72, disp));
-        if (disp) { gloss.setAttribute("cx", f1(gx + dA[2] * 0.4)); gloss.setAttribute("cy", f1(gy + dB[2] * 0.3)); gloss.setAttribute("rx", f1(RX * 0.28 + dA[2] * 0.2)); }
+      },
+      film(ph, t) {
+        filmEl.setAttribute("d", "M" + filmAngles.map((a) => {
+          const k = 1 + 0.4 * (0.03 * Math.sin(3 * a + 0.8) + 0.02 * Math.sin(5 * a + 2.1))
+            + 0.011 * Math.sin(4 * a + ph * 2 * Math.PI) + 0.007 * Math.sin(7 * a - ph * 2 * Math.PI);
+          const bump = 0.45 * s * (lobe(a, 185, 0.32, 20) + lobe(a, 0, 0.55, 16));
+          const dd = dropAt(a) + micro(a, t);
+          return `${(CX + ((RX + 0.6) * k + bump + dd) * Math.cos(a)).toFixed(2)},${(CY + ((RY + 0.6) * k + bump * 0.6 + dd * (RY / RX)) * Math.sin(a)).toFixed(2)}`;
+        }).join(" L") + " Z");
       },
     };
     const local = (e) => { const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; return p.matrixTransform(svg.getScreenCTM().inverse()); };

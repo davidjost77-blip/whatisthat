@@ -1085,9 +1085,7 @@ body.review-open { overflow: hidden; }
   .rule .cond { overflow-wrap: anywhere; min-width: 0; }
   .rule .target { white-space: normal; }
 }
-/* Tropfen-See: Glanzlicht und kurzes Aufleuchten eines Flusses bei neuer Buchung */
-.lf .lf-gloss { fill: #fff; opacity: .17; pointer-events: none; }
-:root[data-theme="dark"] .lf .lf-gloss { opacity: .09; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lf .lf-gloss { opacity: .09; } }
+/* Tropfen-See: feine Uferlinie (reagiert auf die einzelnen Fäden) und kurzes Aufleuchten eines Flusses bei neuer Buchung */
+.lf .lf-film { fill: none; stroke: color-mix(in srgb, var(--flow-in) 50%, var(--text-primary)); stroke-width: .6; opacity: .32; pointer-events: none; }
 .lf .lf-bundle.pulse path { stroke-width: 1.1; }
 .lf .lf-lake { cursor: pointer; }
