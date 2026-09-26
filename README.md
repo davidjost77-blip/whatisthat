@@ -170,7 +170,7 @@ Die Startseite zeigt alles auf einen Blick, geordnet nach Wichtigkeit, und folgt
    (mit eingeschalteten Rücklagen inkl. Übertrag aus dem Vergleichszeitraum), Sparquote (gegen dein Sparziel)
 2. **Geldfluss** im Zentrum: links die Einnahmen in der Einnahmenfarbe, rechts Kategorien, „Sparen & Depot“ und
    „Übrig“ in der Ausgabenfarbe; steuerbare Kategorien im tieferen Ton. Der See zeigt rein, raus und die Differenz und
-   färbt sich nach dem Abstand zum anteiligen Plan (je kräftiger, desto weiter weg). Der Schalter **Rücklagen** holt
+   färbt sich nach dem erwarteten Ergebnis zum Monatsende: blau bei klarem Plus, je näher an null desto röter, rot im Minus. Der Schalter **Rücklagen** holt
    den Übertrag aus dem Vergleichszeitraum dazu – ein Plus fließt blau zu, ein Minus rot ab. Das **Farbpaar** (Blau/Rot,
    Petrol/Koralle, Salbei/Terrakotta) wählst du im Geldfluss. Rot gewarnt wird nur ab 100 € Kategoriesumme.
    **Klick auf eine Kategorie** öffnet ihr Unterdashboard: Unterkategorien gegen den Vergleichszeitraum (Vormonat;

@@ -735,6 +735,14 @@ function carryInfo(d) {
     : p.label === "Vorzeitraum" ? "dem Vorzeitraum" : p.label;
   return { value: eurOf(p.carry), from, complete: p.complete };
 }
+/** Erwartetes Ergebnis zum Ende des Zeitraums: jetziger Stand minus was laut Plan noch abfließt
+ *  (Restbudgets, noch nicht ausgeführte Sparplan-Raten). Abgeschlossene Zeiträume: der Stand selbst. */
+function expectedNet(d, net, saving, plan = planStatus(d)) {
+  if (plan.progress >= 1) return net;
+  const rate = dash.depot?.rate || 0;
+  const saveLeft = Math.max(0, rate * d.range.months.length - saving);
+  return net - plan.remaining - saveLeft;
+}
 /** „429 € unter Plan“ / „37 € über Plan“ – Vorzeichen sind hier missverständlich. */
 const planWord = (v) => `${UI.money0(Math.abs(v))} ${v >= 0 ? "unter" : "über"} Plan`;
 const carryOf = (d) => { const c = carryInfo(d); return PREFS.carry && c?.complete ? c : null; };
@@ -747,7 +755,7 @@ function planStatus(d) {
   const started = r.months.filter((ym) => monthRange(ym)[0] <= ref).length;
   const actual = new Map(d.categories.map((c) => [c.id, eurOf(c.amount)]));
   const soll = new Map();
-  let expected = 0, spent = 0;
+  let expected = 0, spent = 0, remaining = 0;
   for (const c of state.categories) {
     if (c.parent_id || c.kind !== "expense") continue;
     const cents = c.budget || dash.m?.category_avg?.[String(c.id)];
@@ -756,8 +764,12 @@ function planStatus(d) {
     soll.set(c.id, s);
     expected += s;
     spent += actual.get(c.id) || 0;
+    // was bis zum Ende des Zeitraums noch abfließt: Fixkosten, soweit noch nicht bezahlt;
+    // übrige Kategorien im Plan-Tempo für die restlichen Tage
+    if (progress < 1) remaining += c.fixed ? Math.max(0, eurOf(cents) * r.months.length - (actual.get(c.id) || 0))
+      : eurOf(cents) * r.months.length * (1 - progress);
   }
-  return { progress, soll, expected, vsPlan: soll.size ? expected - spent : null };
+  return { progress, soll, expected, remaining, vsPlan: soll.size ? expected - spent : null };
 }
 
 // 1 · Kennzahlen mit Maßstab
@@ -782,8 +794,9 @@ function renderKpis(d) {
       bar: share == null ? "" : `<div class="spent-bar" title="Anteil des neuen Einkommens, der ausgegeben wurde; Strich = Plan höchstens ${100 - sollRate} %"><i style="width:${Math.min(100, share)}%"></i><b style="left:${100 - sollRate}%"></b></div>`,
       spark: m.map((x) => x.expense) },
     { label: carry ? "Differenz inkl. Übertrag" : "Differenz", value: UI.signed(net), tone: net >= 0 ? "in-tone" : "out-tone",
-      sub: carry ? `${UI.signed(diff)} aus diesem Zeitraum · ${UI.signed(carry.value)} Übertrag aus ${esc(carry.from)}`
-        : `Einkommen − Ausgaben${saving ? " − Sparen" : ""} · ${deltaText(k.net, prev.net, true)}`,
+      sub: (plan.progress < 1 ? `<span class="${expectedNet(d, net, saving, plan) < 0 ? "sig-bad" : ""}">erwartet zum Ende ${UI.signed(expectedNet(d, net, saving, plan))}</span> · ` : "") +
+        (carry ? `${UI.signed(diff)} aus diesem Zeitraum · ${UI.signed(carry.value)} Übertrag aus ${esc(carry.from)}`
+          : `Einkommen − Ausgaben${saving ? " − Sparen" : ""} · ${deltaText(k.net, prev.net, true)}`),
       spark: m.map((x) => x.net) },
     { label: "Sparquote", key: "sparquote", value: k.savings_rate == null ? "–" : UI.pct(k.savings_rate), bad: lowRate,
       sub: k.savings_rate == null ? `<span class="muted">zu wenig Einnahmen im Zeitraum</span>` : `<span class="${lowRate ? "sig-bad" : "sig-good"}">${lowRate ? "⚠" : "✓"} Ziel ${UI.pct(sollRate)}</span>`,
@@ -835,13 +848,16 @@ function renderFlow(d) {
   if (minus) nodes.push({ id: "carry", name: `Ausgleich Minus aus ${carry.from}`, value: minus, col: 2, cls: "carry-neg", kind: "carry", sub: "Minus" });
   if (net > 0) nodes.push({ id: "left", name: "Übrig", value: net, col: 2, cls: "rest", sub: UI.equiv(net) });
 
-  // Seefarbe: wer Überhand hat, färbt die Mitte – je weiter vom anteiligen Plan entfernt, desto kräftiger
-  const score = plan.vsPlan == null ? Math.max(-1, Math.min(1, net / (base * 0.12))) : Math.max(-1, Math.min(1, plan.vsPlan / (base * 0.12)));
-  const tint = (c, t) => `color-mix(in srgb, ${c} ${Math.round(t * 100)}%, var(--lake-base))`;
+  // Seefarbe nach dem erwarteten Ergebnis zum Ende des Zeitraums (inkl. Übertrag, wenn eingeschaltet):
+  // deutlich im Plus = Einnahmenfarbe; je näher an null, desto mehr Ausgabenfarbe; im Minus klar Ausgabenfarbe.
+  const expNet = expectedNet(d, net, saving, plan);
+  const score = Math.max(-1, Math.min(1, expNet / (base * 0.15)));
   const lake = {
     left: "color-mix(in srgb, var(--flow-in) 45%, var(--mix-base))",
     right: "color-mix(in srgb, var(--flow-out) 45%, var(--mix-base))",
-    center: score >= 0 ? tint("var(--flow-in)", 0.35 + 0.65 * score) : tint("var(--flow-out)", 0.35 + 0.65 * -score),
+    center: expNet >= 0
+      ? `color-mix(in srgb, color-mix(in oklab, var(--flow-out) ${Math.round(65 * (1 - score) ** 1.6)}%, var(--flow-in)) 88%, var(--lake-base))`
+      : `color-mix(in srgb, var(--flow-out) ${Math.round(78 + 22 * -score)}%, var(--lake-base))`,
     mid: (0.5 - 0.3 * score).toFixed(2),
   };
   const carryNote = !PREFS.carry ? " · Rücklagen ausgeblendet"
@@ -852,7 +868,7 @@ function renderFlow(d) {
     <span><i style="background:color-mix(in srgb, var(--flow-out) 60%, var(--mix-base))"></i>Ausgaben</span>
     <span><i style="background:var(--flow-out)"></i>steuerbar</span>
     ${carry ? `<span><i style="background:${carry.value >= 0 ? "var(--carry-pos)" : "var(--carry-neg)"}"></i>Übertrag</span>` : ""}
-    <span class="muted">See: ${plan.vsPlan == null ? "Differenz" : "Abstand zum anteiligen Plan"} – ${score >= 0 ? "Einnahmenfarbe = im Plus" : "Ausgabenfarbe = im Minus"}</span>`;
+    <span class="muted">See: ${plan.progress < 1 ? "erwartetes Ergebnis zum Ende" : "Ergebnis"}${carry ? " inkl. Übertrag" : ""} – Einnahmenfarbe = im Plus, je näher an null desto röter, Ausgabenfarbe = im Minus</span>`;
   Flow.lake($("#flow"), { nodes }, {
     label: "Geldfluss: Einnahmen links münden in den See, Ausgaben und Sparen fließen rechts ab",
     format: (v) => UI.money0(v),
@@ -861,6 +877,7 @@ function renderFlow(d) {
       { cls: "lf-k", text: carry ? "Differenz inkl. Übertrag" : "Differenz" },
       { cls: "lf-v", text: UI.signed(net) },
       { cls: "lf-s", text: `${UI.money0(inflow)} rein · ${UI.money0(outflow)} raus` },
+      ...(plan.progress < 1 ? [{ cls: "lf-s", text: `erwartet zum Ende: ${UI.signed(expNet)}` }] : []),
       { cls: "lf-s", text: plan.vsPlan == null ? periodLabel() : `${planWord(plan.vsPlan)} (anteilig)` },
     ],
     detail: (x) => {

@@ -156,10 +156,11 @@ Entworfen und abgestimmt im Claude-Design-Canvas (Variante „Final“).
   wählbar im Geldfluss: Blau/Rot (Standard), Petrol/Koralle, Salbei/Terrakotta – je hell und dunkel. *Steuerbare*
   Kategorien (Standard Freizeit, Shopping; änderbar im Monatsplan) im tiefen, vollen Ton, übrige Ausgaben blasser.
   „Sparen & Depot“ in der Einnahmenfarbe mit dunklerem Ton, „Übrig“ grau.
-- **Der See zeigt rein, raus und die Differenz** und färbt sich nach dem Abstand zum *anteiligen Plan* des Zeitraums
-  (Budgets je Kategorie; Fixkosten zählen ab Monatsbeginn voll, der Rest gleichmäßig über die Tage): links
-  Einnahmen-, rechts Ausgabenfarbe, die Mitte nimmt die Farbe der Seite an, die Überhand hat – je weiter vom Plan
-  entfernt, desto kräftiger (volle Stärke bei 12 % des Einkommens); die überwiegende Seite nimmt mehr vom See ein.
+- **Der See zeigt rein, raus und die Differenz** und färbt sich nach dem **erwarteten Ergebnis zum Ende des
+  Zeitraums** (inkl. Übertrag, wenn eingeschaltet): jetziger Stand minus noch offene Fixkosten, übrige Budgets im
+  Plan-Tempo für die restlichen Tage und noch nicht ausgeführte Sparplan-Raten. Deutlich im Plus = Einnahmenfarbe;
+  je näher an null, desto mehr nähert sich die Mitte der Ausgabenfarbe; im Minus klar Ausgabenfarbe (volle Stärke bei
+  15 % des Einkommens). Die überwiegende Seite nimmt mehr vom See ein. Der Abstand zum anteiligen Plan steht als Text.
 - **Rücklagen (Übertrag)** schaltbar: Was im Vergleichszeitraum nach Ausgaben und Sparen übrig blieb, fließt als
   blauer Strom zu („Übertrag aus August“); ein Minus fließt als roter Strom ab („Ausgleich Minus aus August“) – immer
   blau/rot, unabhängig vom Farbpaar. Ohne vollständige Daten im Vergleichszeitraum kein Übertrag (mit Hinweis).
@@ -191,7 +192,7 @@ Kleine Metaphern bleiben dort, wo sie schneller sind als eine Zahl: **Spur mit S
 ## Änderungen
 
 - **Stand 8** (nach Entwurf, abgenommen): Geldfluss mit Einnahmen-/Ausgabenfarbe (Farbpaar wählbar), See gefärbt
-  nach dem anteiligen Plan, Rücklagen-Schalter (Übertrag aus dem Vergleichszeitraum), steuerbare Kategorien im tiefen
+  nach dem erwarteten Ergebnis zum Ende (inkl. Übertrag), Rücklagen-Schalter (Übertrag aus dem Vergleichszeitraum), steuerbare Kategorien im tiefen
   Ton, Warnungen erst ab 100 €, Unterdashboard je Kategorie mit Vergleich, Jahresvergleich mit gleichem Zeitraum im
   Vorjahr. Monatsplan: ein Sparziel, Budgets passen sich im Verhältnis an (§8).
 - **Stand 7** (auf Wunsch): Startseite zeigt den laufenden Monat statt 12 Monate. Monate sind Gehaltsmonate
