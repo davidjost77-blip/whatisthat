@@ -13,6 +13,7 @@ import re
 from collections import defaultdict
 from datetime import date, timedelta
 
+from . import cycles as cycles_mod
 from .db import NEUTRAL
 
 UNCAT_OUT = {"id": 0, "name": "Nicht kategorisiert", "color": NEUTRAL}
@@ -94,12 +95,17 @@ def dashboard(conn, date_from=None, date_to=None, accounts=None):
     cats = load_categories(conn)
     cl = Classifier(cats)
     txs = _fetch(conn, date_from, date_to, accounts)
-    months = month_list(date_from, date_to)
+    cy = cycles_mod.load(conn)
+    months = cy.keys_between(date_from, date_to)      # Gehaltsmonate (ohne Gehalt: Kalendermonate)
 
     # --- Kennzahlen inkl. Vergleich mit dem gleich langen Vorzeitraum ---
     d0, d1 = date.fromisoformat(date_from), date.fromisoformat(date_to)
     span = (d1 - d0).days + 1
     prev_from, prev_to = d0 - timedelta(days=span), d0 - timedelta(days=1)
+    if len(months) == 1 and cy.range_of(months[0]) == (date_from, date_to):
+        # genau ein (Gehalts-)Monat: mit dem vorigen Gehaltsmonat vergleichen
+        a, b = cy.range_of(cycles_mod._add_month(months[0], -1))
+        prev_from, prev_to = date.fromisoformat(a), date.fromisoformat(b)
     income, expense, transfer = cl.totals(txs)
     prev = None
     if prev_from.isoformat() >= bounds[0]:
@@ -124,7 +130,7 @@ def dashboard(conn, date_from=None, date_to=None, accounts=None):
             if cat and "eigene konten" not in cat["name"].lower():
                 saving[cat["name"]] -= tx["amount"]
             continue
-        m = tx["date"][:7]
+        m = cy.key_of(tx["date"])
         cat = cl.top(tx)
         cid = cat["id"] if cat else 0
         if k == "income":
@@ -213,7 +219,8 @@ def dashboard(conn, date_from=None, date_to=None, accounts=None):
 
     return {
         "empty": False,
-        "range": {"from": date_from, "to": date_to, "months": months, "min": bounds[0], "max": bounds[1]},
+        "range": {"from": date_from, "to": date_to, "months": months, "min": bounds[0], "max": bounds[1],
+                  "month_ranges": {k: cy.range_of(k) for k in months}, "salary_months": cy.active},
         "kpis": {
             "income": income,
             "expense": expense,
@@ -325,13 +332,15 @@ def measures(conn, targets, today=None, window=6):
     last = conn.execute("SELECT MAX(date) FROM transactions").fetchone()[0]
     ref = min(today, last) if last else today
     first = conn.execute("SELECT MIN(date) FROM transactions").fetchone()[0]
-    months = [m for m in previous_months(ref, window) if first and m >= first[:7]]
+    cy = cycles_mod.load(conn, date.fromisoformat(today[:10]))
+    ref_key = cy.key_of(ref)
+    months = [m for m in (cycles_mod._add_month(ref_key, -i) for i in range(window, 0, -1)) if first and m >= cy.key_of(first)]
     cats = load_categories(conn)
     cl = Classifier(cats)
     expense = fixed = 0
     by_cat = defaultdict(int)
     if months:
-        txs = _fetch(conn, f"{months[0]}-01", f"{months[-1]}-31", None)
+        txs = _fetch(conn, cy.range_of(months[0])[0], cy.range_of(months[-1])[1], None)
         for tx in txs:
             if cl.kind(tx) != "expense":
                 continue
@@ -348,6 +357,9 @@ def measures(conn, targets, today=None, window=6):
     monthly = targets.get("monthly_expense") or avg_expense
     return {
         "ref": ref,
+        "ref_month": ref_key,                          # laufender (Gehalts-)Monat
+        "month_range": cy.range_of(ref_key),
+        "salary_months": cy.active,
         "months": months,
         "avg_expense": avg_expense,
         "avg_fixed": avg_fixed,

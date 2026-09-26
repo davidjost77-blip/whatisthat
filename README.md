@@ -127,6 +127,15 @@ die Spaltennamen deiner Datei eintragen. Verfügbare Felder: `date`, `amount` (o
 Beim ersten Start wird ein Satz typischer deutscher Kategorien samt Regeln angelegt (Supermärkte, Tankstellen,
 Streaming, Versicherungen …) und für vier Kategorien ein Beispiel-Budget gesetzt. Alles davon kannst du ändern oder löschen.
 
+### Monate = Gehaltsmonate, Startseite = laufender Monat
+
+Die Startseite zeigt den **laufenden Monat** („Dieser Monat“). Ein Monat reicht immer **vom Gehaltseingang bis
+unmittelbar vor den nächsten** – das Gehalt ist der erste Eintrag des Monats. Erkannt wird das Gehalt über die
+Kategorie „Gehalt“; Sonderzahlungen (Weihnachtsgeld, Korrekturen) starten keinen neuen Monat. Benannt wird ein
+Gehaltsmonat nach dem Kalendermonat, in dem die meisten seiner Tage liegen (Gehalt am 27.08. → „September“). Der
+laufende Monat endet am Tag vor dem erwarteten nächsten Gehalt. Alle Monatswerte – Soll, Budgets, Ø 6 Monate,
+Monatsverlauf, Vergleich mit dem Vormonat – rechnen in Gehaltsmonaten. Ohne erkennbares Gehalt gelten Kalendermonate.
+
 ### Zuordnen – ohne Kategorie und unsicher
 
 Über den Kennzahlen im Dashboard erscheint ein Hinweis, sobald etwas offen ist („⚠ 3 Buchungen ohne Kategorie“,

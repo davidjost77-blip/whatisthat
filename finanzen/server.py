@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import analytics, bank, db, depot, importer, ingest, review, rules
+from . import analytics, bank, cycles, db, depot, importer, ingest, review, rules
 
 log = logging.getLogger("finanzen.server")
 STATIC_DIR = Path(__file__).parent / "static"
@@ -107,8 +107,12 @@ class App:
         version = conn.execute(
             "SELECT (SELECT COALESCE(MAX(id), 0) FROM imports) || '-' || COUNT(*) || '-' || COALESCE(SUM(amount), 0) || '-' || "
             "COALESCE(SUM(COALESCE(category_id, 0) * (id % 97)), 0) FROM transactions").fetchone()[0]
+        cy = cycles.load(conn)
         return {
             "version": version,
+            # Gehaltsmonate: ein Monat reicht vom Gehalt bis vor das nächste Gehalt
+            "salary_months": cy.active,
+            "months": cy.as_list(bounds[0], bounds[1]) if bounds[0] else [],
             "min": bounds[0],
             "max": bounds[1],
             "count": bounds[2],
@@ -241,7 +245,9 @@ class App:
             where.append("amount > 0")
         elif q.get("direction") == "out":
             where.append("amount < 0")
-        sort = {"date": "date DESC, id DESC", "amount": "amount ASC", "-amount": "amount DESC",
+        # Neueste zuerst; am Gehaltstag steht das Gehalt als erster Eintrag des Monats (also zuunterst des Tages)
+        salary_last = ("(category_id IN (SELECT id FROM categories WHERE lower(name) = 'gehalt') AND amount > 0)")
+        sort = {"date": f"date DESC, {salary_last} ASC, id DESC", "amount": "amount ASC", "-amount": "amount DESC",
                 "counterparty": "counterparty COLLATE NOCASE"}.get(q.get("sort", "date"), "date DESC")
         limit = min(int(q.get("limit", 200)), 5000)
         offset = int(q.get("offset", 0))

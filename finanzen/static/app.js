@@ -56,7 +56,7 @@ const css = (name) => getComputedStyle(document.documentElement).getPropertyValu
 // ------------------------------------------------------------------ Zustand
 const state = {
   view: "dashboard",
-  period: "12m",
+  period: "month",
   from: null,
   to: null,
   account: "",
@@ -72,11 +72,13 @@ function computePeriod(period) {
   const today = new Date();
   const ref = max < today ? max : today; // "jetzt" = letzte Buchung, damit ältere Exporte sinnvoll aussehen
   const y = ref.getFullYear(), m = ref.getMonth();
+  const cur = monthOf(iso(ref));                     // laufender Gehaltsmonat
+  const span = (back) => [monthRange(shiftMonth(cur, -back))[0], monthRange(cur)[1]];
   switch (period) {
-    case "month": return [iso(new Date(y, m, 1)), iso(new Date(y, m + 1, 0))];
-    case "lastmonth": return [iso(new Date(y, m - 1, 1)), iso(new Date(y, m, 0))];
-    case "3m": return [iso(new Date(y, m - 2, 1)), iso(new Date(y, m + 1, 0))];
-    case "12m": return [iso(new Date(y, m - 11, 1)), iso(new Date(y, m + 1, 0))];
+    case "month": return monthRange(cur);
+    case "lastmonth": return monthRange(shiftMonth(cur, -1));
+    case "3m": return span(2);
+    case "12m": return span(11);
     case "ytd": return [iso(new Date(y, 0, 1)), iso(new Date(y, 11, 31))];
     case "lastyear": return [iso(new Date(y - 1, 0, 1)), iso(new Date(y - 1, 11, 31))];
     default: return [state.status?.min || iso(new Date(y, 0, 1)), state.status?.max || iso(ref)];
@@ -173,6 +175,19 @@ const shiftMonth = (ym, n) => {
   const d = new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1 + n, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 };
+// Gehaltsmonate: Ein „Monat“ reicht vom Gehalt bis unmittelbar vor das nächste Gehalt (Schlüssel YYYY-MM wie
+// ein Kalendermonat benannt). Ohne erkennbares Gehalt gelten Kalendermonate.
+const monthRange = (ym) => {
+  const c = state.status?.months?.find((x) => x.key === ym);
+  return c ? [c.from, c.to] : [`${ym}-01`, iso(new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0))];
+};
+const monthOf = (isoDate) => state.status?.months?.find((x) => x.from <= isoDate && isoDate <= x.to)?.key || isoDate.slice(0, 7);
+const dayDiff = (a, b) => Math.round((new Date(`${b}T00:00`) - new Date(`${a}T00:00`)) / 864e5);
+const monthDays = (ym) => { const [a, b] = monthRange(ym); return dayDiff(a, b) + 1; };
+const dayInMonth = (ym, isoDate) => Math.max(1, Math.min(monthDays(ym), dayDiff(monthRange(ym)[0], isoDate) + 1));
+const plusDays = (isoDate, n) => { const d = new Date(`${isoDate}T00:00`); d.setDate(d.getDate() + n); return iso(d); };
+const monthSpan = (ym) => { const [a, b] = monthRange(ym); return `${dateDe(a).slice(0, 6)} – ${dateDe(b).slice(0, 6)}`; };
+
 const TOLERANCE = 0.05; // Abweichungen unter 5 % bleiben grau – sonst ist alles rot und nichts wichtig
 
 async function loadDepotSummary() {
@@ -200,12 +215,12 @@ async function loadDepotSummary() {
 async function loadDashboard() {
   try {
     const m = await UI.loadMeasures();
-    const ym = m.ref.slice(0, 7);
-    const curTo = `${ym}-${String(daysIn(ym)).padStart(2, "0")}`;
+    const ym = m.ref_month || monthOf(m.ref);
+    const [curFrom, curTo] = monthRange(ym);
     const [period, cur, year, depot] = await Promise.all([
       api("GET", `/api/dashboard?${filterQuery()}`),
-      api("GET", `/api/dashboard?from=${ym}-01&to=${curTo}`),
-      api("GET", `/api/dashboard?from=${shiftMonth(ym, -12)}-01&to=${curTo}`),
+      api("GET", `/api/dashboard?from=${curFrom}&to=${curTo}`),
+      api("GET", `/api/dashboard?from=${monthRange(shiftMonth(ym, -12))[0]}&to=${curTo}`),
       loadDepotSummary(),
     ]);
     Object.assign(dash, { m, period, cur, year, depot, ym, ref: m.ref });
@@ -221,7 +236,7 @@ async function loadDashboard() {
 function calc() {
   const { m, cur, year, ym, ref } = dash;
   const empty = !cur || cur.empty;
-  const days = daysIn(ym), day = +ref.slice(8, 10);
+  const days = monthDays(ym), day = dayInMonth(ym, ref);
   const progress = day / days;
   const sollMonth = m.soll.monthly_expense ? eurOf(m.soll.monthly_expense) : null;
   const fixedPart = sollMonth ? Math.min(eurOf(m.avg_fixed), sollMonth) : 0;
@@ -262,7 +277,8 @@ function calc() {
 }
 
 // Vollbild-Ansichten Ausgaben/Sparquote/Kategorien beziehen sich auf den laufenden Monat, die Zusammensetzung auf den Zeitraum
-const context = (key) => (key === "zusammensetzung" ? periodLabel() : dash.ref ? `Stand ${dateDe(dash.ref)} · ${monthLong(dash.ym)}` : "");
+const context = (key) => (key === "zusammensetzung" ? periodLabel() : dash.ref
+  ? `Stand ${dateDe(dash.ref)} · ${monthLong(dash.ym)}${state.status?.salary_months ? ` (Gehaltsmonat ${monthSpan(dash.ym)})` : ""}` : "");
 
 // ---------- Diagramme in den Zoom-Ebenen
 const layerCharts = { 2: [], 3: [] };
@@ -327,11 +343,12 @@ function focusAusgaben(body) {
   const daily = new Map(dash.year.daily);
   const cum = (ym, upTo) => {
     let s = 0;
-    return Array.from({ length: upTo }, (_, i) => { s += eurOf(daily.get(`${ym}-${String(i + 1).padStart(2, "0")}`) || 0); return Math.round(s * 100) / 100; });
+    const start = monthRange(ym)[0];
+    return Array.from({ length: upTo }, (_, i) => { s += eurOf(daily.get(plusDays(start, i)) || 0); return Math.round(s * 100) / 100; });
   };
   const cur = cum(dash.ym, c.day);
   const prevYm = shiftMonth(dash.ym, -1);
-  const prev = cum(prevYm, daysIn(prevYm)).slice(0, c.days);
+  const prev = cum(prevYm, monthDays(prevYm)).slice(0, c.days);
   const path = c.sollMonth != null ? Array.from({ length: c.days }, (_, i) => c.fixedPart + (c.sollMonth - c.fixedPart) * ((i + 1) / c.days)) : [];
   const days = Array.from({ length: c.days }, (_, i) => i + 1);
   const chart = mkChart($("#f-cum", body), 2);
@@ -636,7 +653,8 @@ const periodMonths = () => dash.period?.range?.months?.length || 1;
 const periodLabel = () => {
   const r = dash.period?.range;
   if (!r) return "";
-  return r.months.length === 1 ? monthLong(r.months[0]) : `${dateDe(r.from)} – ${dateDe(r.to)} · ${r.months.length} Monate`;
+  if (r.months.length === 1) return state.status?.salary_months ? `${monthLong(r.months[0])} · ${monthSpan(r.months[0])}` : monthLong(r.months[0]);
+  return `${dateDe(r.from)} – ${dateDe(r.to)} · ${r.months.length} Monate`;
 };
 /** Soll einer Oberkategorie im gewählten Zeitraum (Monatsbudget, sonst Ø der letzten 6 Monate) in €. */
 function catSoll(id) {
@@ -849,7 +867,8 @@ function renderMonthly(d) {
   c.off("click");
   c.on("click", (p) => {
     const ym = months[p.dataIndex];
-    goToTransactions({ from: `${ym}-01`, to: iso(new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0)), direction: p.seriesName === "Einnahmen" ? "in" : "out" });
+    const [from, to] = monthRange(ym);
+    goToTransactions({ from, to, direction: p.seriesName === "Einnahmen" ? "in" : "out" });
   });
 }
 
@@ -925,8 +944,8 @@ function depthComposition(body) {
 /** Aus einer Zoomstufe in die Umsätze springen; Esc führt dorthin zurück. */
 function openTransactions({ month, category = "", direction = "" }) {
   state.returnTo = zoom.level > 1 ? { key: zoom.key, level: zoom.level } : null;
-  const last = new Date(+month.slice(0, 4), +month.slice(5, 7), 0);
-  zoom.go(1, false).then(() => goToTransactions({ from: `${month}-01`, to: iso(last), category, direction }));
+  const [from, to] = monthRange(month);
+  zoom.go(1, false).then(() => goToTransactions({ from, to, category, direction }));
 }
 
 const zoom = new UI.Zoom({
@@ -1375,7 +1394,7 @@ async function init() {
   const view = location.hash.slice(1).split("/")[0];
   state.view = ["dashboard", "transactions", "categories", "import"].includes(view) ? view : "dashboard";
   const zoomHash = location.hash.slice(1);
-  const period = params.get("period") || "12m";
+  const period = params.get("period") || "month";   // Startseite = laufender (Gehalts-)Monat
   state.period = period;
   [state.from, state.to] = period === "custom" ? [params.get("from"), params.get("to")] : computePeriod(period);
   $("#date-from").value = state.from || "";

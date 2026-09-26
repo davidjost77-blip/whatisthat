@@ -15,6 +15,7 @@ Oberfläche angepasst, nicht die Regel.
 
 ### Aufbau (Stand 6)
 1. **Startseite**: alles Wichtige auf einer Seite, von oben nach unten nach Wichtigkeit geordnet; im Zentrum der Finanzen steht der bewegte **Geldfluss**
+   – Standardzeitraum ist der **laufende Monat**; ein Monat reicht vom Gehaltseingang bis vor den nächsten (Gehaltsmonat)
 2. **Vollbild** (Extra, per ⤢): ein Element bildschirmfüllend, Trend + Vergleich
 3. **Tiefe** (Extra): exakte Daten, Tabellen
 
@@ -173,6 +174,8 @@ Kleine Metaphern bleiben dort, wo sie schneller sind als eine Zahl: **Spur mit S
 
 ## Änderungen
 
+- **Stand 7** (auf Wunsch): Startseite zeigt den laufenden Monat statt 12 Monate. Monate sind Gehaltsmonate
+  (vom Gehalt bis vor das nächste Gehalt). Neu: Zuordnen-Panel für Buchungen ohne Kategorie und unsichere Zuordnungen.
 - **Stand 6** (nach Auswahl im Claude-Design-Canvas): Der Geldfluss ist ein See, in den Flüsse aus feinen Fäden
   münden (§8). Farbschema wählbar: Papier & Bronze (Standard), Tinte, Graphit, Salbei – je hell und dunkel (§5).
 - **Stand 5** (auf Wunsch): Zurück zu klassischen Startseiten, auf denen alles direkt zugänglich ist; im Zentrum der
