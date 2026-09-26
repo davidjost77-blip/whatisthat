@@ -207,6 +207,10 @@ Kleine Metaphern bleiben dort, wo sie schneller sind als eine Zahl: **Spur mit S
 
 ## Änderungen
 
+- **Stand 14** (auf Wunsch): Die Seefarbe (Mitte) hängt am Rücklagen-Schalter. **An:** nach dem (erwarteten)
+  Kontostand – bläulich, solange über null, je näher an null desto rötlicher, richtig rot erst unter null.
+  **Aus:** nach dem Anteil des neuen Einkommens, der im Zeitraum ausgegeben wurde – bläulich bis zum Rahmen des
+  Sparziels, gegen 100 % rötlicher, über 100 % rot.
 - **Stand 10** (nach Simulation 2/3): Wabbeln sehr leicht, kein Glanzlicht, feine Uferlinie reagiert auf die Fäden.
 - **Stand 9** (nach Simulation, auf Wunsch): Der See hat die Physik eines Wassertropfens; Maus und neue Buchungen
   bringen ihn dort zum Wabbeln, wo sie ihn treffen (§8).

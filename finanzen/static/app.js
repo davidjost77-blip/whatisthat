@@ -899,15 +899,23 @@ function renderFlow(d) {
   // Seefarbe nach dem erwarteten Ergebnis zum Ende des Zeitraums (inkl. Übertrag, wenn eingeschaltet):
   // deutlich im Plus = Einnahmenfarbe; je näher an null, desto mehr Ausgabenfarbe; im Minus klar Ausgabenfarbe.
   const expNet = expectedNet(d, net, saving, plan);
-  // mit bekanntem Kontostand: rot nur, wenn das Konto (erwartet) wirklich gegen null oder darunter geht
+  // Seefarbe (Mitte) – hängt am Rücklagen-Schalter:
+  //  an:  Kontostand (erwartet zum Ende; ohne bekannten Stand das Ergebnis inkl. Übertrag). Bläulich, solange über null,
+  //       je näher an null desto rötlicher, richtig rot erst unter null.
+  //  aus: Anteil des neuen Einkommens, der in diesem Zeitraum ausgegeben wurde. Bis zum Sparziel-Rahmen bläulich,
+  //       gegen 100 % rötlicher, über 100 % (mehr ausgegeben als eingenommen) rot.
   const expEnd = bal ? bal.end + expectedNet(d, 0, saving, plan) : null;
-  const score = Math.max(-1, Math.min(1, (bal ? expEnd : expNet) / (base * 0.15)));
+  const sollRate = dash.m?.soll?.savings_rate ?? 20;
+  const spentShare = income > 0 ? expense / income : (expense > 0 ? 2 : 0);
+  const score = PREFS.carry
+    ? Math.max(-1, Math.min(1, (bal ? expEnd : expNet) / (base * 0.15)))
+    : Math.max(-1, Math.min(1, (1 - spentShare) / Math.max(0.1, sollRate / 100 + 0.1)));
   const lake = {
     left: "color-mix(in srgb, var(--flow-in) 45%, var(--mix-base))",
     right: "color-mix(in srgb, var(--flow-out) 45%, var(--mix-base))",
-    center: (bal ? expEnd : expNet) >= 0
-      ? `color-mix(in srgb, color-mix(in oklab, var(--flow-out) ${Math.round(65 * (1 - score) ** 1.6)}%, var(--flow-in)) 88%, var(--lake-base))`
-      : `color-mix(in srgb, var(--flow-out) ${Math.round(78 + 22 * -score)}%, var(--lake-base))`,
+    center: score >= 0
+      ? `color-mix(in srgb, color-mix(in oklab, var(--flow-out) ${Math.round(55 * (1 - score) ** 1.8)}%, var(--flow-in)) 88%, var(--lake-base))`
+      : `color-mix(in srgb, var(--flow-out) ${Math.round(80 + 20 * -score)}%, var(--lake-base))`,
     mid: (0.5 - 0.3 * score).toFixed(2),
   };
   const carryNote = !PREFS.carry ? " · Rücklagen ausgeblendet"
@@ -921,8 +929,9 @@ function renderFlow(d) {
     <span><i style="background:color-mix(in srgb, var(--flow-out) 60%, var(--mix-base))"></i>Ausgaben</span>
     <span><i style="background:var(--flow-out)"></i>steuerbar</span>
     ${carry ? `<span><i style="background:var(--carry-pos)"></i>Übertrag</span>` : ""}
-    <span class="muted">${bal ? `See: ${plan.progress < 1 ? "erwarteter " : ""}Kontostand zum Ende – Einnahmenfarbe, solange genug drauf ist; je näher an null desto röter; Ausgabenfarbe = Konto im Minus`
-      : `See: ${plan.progress < 1 ? "erwartetes Ergebnis zum Ende" : "Ergebnis"}${carry ? " inkl. Übertrag" : ""} – Einnahmenfarbe = im Plus, je näher an null desto röter, Ausgabenfarbe = im Minus`}</span>`;
+    <span class="muted">${!PREFS.carry ? `See: Anteil des Einkommens, der ausgegeben wurde (${income > 0 ? UI.pct(spentShare * 100, 0) : "–"}) – bläulich im Rahmen, gegen 100 % rötlicher, darüber rot`
+      : bal ? `See: ${plan.progress < 1 ? "erwarteter " : ""}Kontostand zum Ende – bläulich, solange über null; je näher an null desto rötlicher; rot = Konto im Minus`
+      : `See: ${plan.progress < 1 ? "erwartetes Ergebnis zum Ende" : "Ergebnis"}${carry ? " inkl. Übertrag" : ""} – bläulich im Plus, je näher an null desto rötlicher, rot im Minus`}</span>`;
   renderBalancePrompt(d);
   const lakeCtl = Flow.lake($("#flow"), { nodes }, {
     label: "Geldfluss: Einnahmen links münden in den See, Ausgaben und Sparen fließen rechts ab",
