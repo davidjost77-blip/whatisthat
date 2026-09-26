@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import analytics, db, depot, importer, ingest, rules
+from . import analytics, bank, db, depot, importer, ingest, rules
 
 log = logging.getLogger("finanzen.server")
 STATIC_DIR = Path(__file__).parent / "static"
@@ -43,9 +43,11 @@ class App:
         self.inbox = inbox
         self.profiles_path = profiles_path
         self.watcher = None
+        self.bank_dir = Path(db_path).resolve().parent / "bank"
         db.init_db(db_path)
         conn = db.connect(db_path)
         depot.init(conn)
+        bank.init(conn)
         conn.close()
         self.routes = [
             ("GET", r"/api/status", self.status),
@@ -77,6 +79,14 @@ class App:
             ("DELETE", r"/api/depot/tx/(\d+)", self.delete_depot_tx),
             ("GET", r"/api/quotes/chart", self.quote_chart),
             ("GET", r"/api/quotes/search", self.quote_search),
+            ("GET", r"/api/bank", self.bank_status),
+            ("PUT", r"/api/bank/config", self.bank_config),
+            ("PUT", r"/api/bank/settings", self.bank_settings),
+            ("GET", r"/api/bank/aspsps", self.bank_aspsps),
+            ("POST", r"/api/bank/auth", self.bank_auth),
+            ("POST", r"/api/bank/session", self.bank_session),
+            ("POST", r"/api/bank/sync", self.bank_sync),
+            ("POST", r"/api/bank/disconnect", self.bank_disconnect),
         ]
 
     # ------------------------------------------------------------------ Status
@@ -89,7 +99,12 @@ class App:
             )
         ]
         last_import = conn.execute("SELECT imported_at FROM imports ORDER BY id DESC LIMIT 1").fetchone()
+        # Datenstand: ändert sich bei jedem Import, Bankabruf, jeder Umkategorisierung → Dashboard aktualisiert sich
+        version = conn.execute(
+            "SELECT (SELECT COALESCE(MAX(id), 0) FROM imports) || '-' || COUNT(*) || '-' || COALESCE(SUM(amount), 0) || '-' || "
+            "COALESCE(SUM(COALESCE(category_id, 0) * (id % 97)), 0) FROM transactions").fetchone()[0]
         return {
+            "version": version,
             "min": bounds[0],
             "max": bounds[1],
             "count": bounds[2],
@@ -124,6 +139,54 @@ class App:
 
     def suggestions(self, conn, req):
         return analytics.uncategorized_groups(conn, int(req.query.get("limit", [30])[0]))
+
+    # ------------------------------------------------------------ Bankanbindung (Enable Banking)
+    def _bank(self, fn, *args, **kw):
+        try:
+            return fn(*args, **kw)
+        except bank.BankError as e:
+            raise ApiError(str(e), HTTPStatus.BAD_GATEWAY if e.status and e.status >= 500 else HTTPStatus.BAD_REQUEST)
+
+    def bank_status(self, conn, req):
+        return bank.status(conn, self.bank_dir)
+
+    def bank_config(self, conn, req):
+        body = req.json()
+        app = self._bank(bank.configure, conn, self.bank_dir, body.get("app_id"), body.get("key_pem"))
+        return {"ok": True, "application": {"name": app.get("name"), "redirect_urls": app.get("redirect_urls") or []},
+                **bank.status(conn, self.bank_dir)}
+
+    def bank_settings(self, conn, req):
+        body = req.json()
+        if "auto" in body:
+            bank._set(conn, "auto", bool(body["auto"]))
+        return bank.status(conn, self.bank_dir)
+
+    def bank_aspsps(self, conn, req):
+        country = (req.query.get("country", ["DE"])[0] or "DE").upper()[:2]
+        return {"aspsps": self._bank(bank.aspsps, conn, self.bank_dir, country)}
+
+    def bank_auth(self, conn, req):
+        body = req.json()
+        if not body.get("aspsp"):
+            raise ApiError("Bitte eine Bank auswählen.")
+        return self._bank(bank.start_auth, conn, self.bank_dir, body["aspsp"], (body.get("country") or "DE").upper(),
+                          body.get("max_days"))
+
+    def bank_session(self, conn, req):
+        res = self._bank(bank.finish_auth, conn, self.bank_dir, req.json().get("url"))
+        res["sync"] = self._bank(bank.sync, conn, self.bank_dir, res["session_id"])
+        return res
+
+    def bank_sync(self, conn, req):
+        return {"results": self._bank(bank.sync, conn, self.bank_dir, req.json().get("session_id"))}
+
+    def bank_disconnect(self, conn, req):
+        sid = req.json().get("session_id")
+        if not sid:
+            raise ApiError("session_id fehlt.")
+        bank.disconnect(conn, self.bank_dir, sid)
+        return bank.status(conn, self.bank_dir)
 
     # ------------------------------------------------------------ Buchungen
     def list_transactions(self, conn, req):

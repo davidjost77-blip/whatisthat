@@ -39,6 +39,25 @@ python scripts\demo_daten.py inbox     # legt die Dateien in die Inbox, die App 
 
 Bank-Exporte importierst du per Drag & Drop unter *Import* oder indem du sie in `~/Finanzen/inbox` legst.
 
+## Bankanbindung (live, über Enable Banking)
+
+Statt CSV-Exporte zu ziehen, kann die App neue Buchungen direkt von der Bank holen – über
+[Enable Banking](https://enablebanking.com), einen regulierten PSD2-Kontoinformationsdienst (rund 2.500 Banken in Europa,
+u. a. DKB, ING, Sparkassen). Für die **eigenen Konten** ist das kostenlos („eingeschränkter Modus“).
+
+1. Bei enablebanking.com registrieren, im Control Panel eine Anwendung anlegen: Umgebung **Production**,
+   Redirect URL `https://localhost:8765/bank/callback`, Schlüssel erzeugen lassen (`.pem` wird heruntergeladen).
+2. Anwendung mit **„Activate by linking accounts“** aktivieren und die eigenen Konten verknüpfen.
+3. In der App unter **Import → Bankanbindung** Application-ID und `.pem` hinterlegen, Bank wählen, **Bei Bank anmelden**.
+4. Nach der Anmeldung zeigt der Browser eine Seite, die nicht lädt (`https://localhost…?code=…`) – die komplette Adresse
+   kopieren und in der App einfügen. Fertig: Die letzten Monate werden sofort übernommen.
+
+Danach ruft die App **alle 6 Stunden** automatisch ab (PSD2 erlaubt 4 Abrufe am Tag ohne dich), solange sie läuft;
+„Jetzt abrufen“ geht jederzeit. Das geöffnete Dashboard aktualisiert sich von selbst. Die Freigabe gilt je nach Bank
+90–180 Tage, danach einmal „Neu freigeben“. Deine Bank-Zugangsdaten sieht weder die App noch Enable Banking; der
+private Schlüssel liegt nur lokal unter `data/bank/`. Duplikate zu früheren CSV-Importen werden erkannt, vorgemerkte
+Umsätze erst nach der Buchung übernommen.
+
 ## Kontinuierlicher Import
 
 Es gibt drei Wege, die du beliebig kombinieren kannst:

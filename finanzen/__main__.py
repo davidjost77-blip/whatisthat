@@ -7,7 +7,7 @@ import sys
 import webbrowser
 from pathlib import Path
 
-from . import db, importer, ingest
+from . import bank, db, importer, ingest
 from .server import App, serve
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -60,6 +60,8 @@ def main(argv=None):
     if not args.no_watch:
         app.watcher = ingest.InboxWatcher(args.db, args.inbox, args.profiles, args.interval)
         app.watcher.start()
+        app.bank_syncer = bank.BankSyncer(args.db, app.bank_dir)   # Bankabruf alle 6 h, falls eingerichtet
+        app.bank_syncer.start()
     httpd = serve(app, args.host, args.port)
     url = f"http://{'localhost' if args.host in ('127.0.0.1', '0.0.0.0') else args.host}:{args.port}/"
     logging.info("Finanzen läuft auf %s  (Beenden mit Strg+C)", url)

@@ -974,3 +974,27 @@ a.primary-link:hover { background: var(--bronze-ink); color: var(--on-accent); }
 @keyframes lf-in { from { opacity: 0; } to { opacity: 1; } }
 body.no-motion .lf .lf-thread, body.no-motion .lf { animation: none; }
 @media (prefers-reduced-motion: reduce) { .lf .lf-thread, .lf { animation: none; } }
+
+/* ---------- Bankanbindung (Import) ---------- */
+.bank { border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; background: color-mix(in srgb, var(--bronze) 4%, var(--surface-1)); }
+.bank-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.bank-head h2 { margin: 0; }
+.bank-steps { padding-left: 20px; margin: 8px 0 12px; display: grid; gap: 6px; }
+.bank code.copy { cursor: pointer; border: 1px dashed var(--baseline); }
+.bank-form { display: grid; gap: 10px; max-width: 520px; }
+.bank-form label { display: grid; gap: 4px; font-weight: 600; font-size: 13px; }
+.bank-session { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin: 10px 0; background: var(--surface-1); display: grid; gap: 6px; }
+.bank-session .row { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+.bank-session.expired { border-color: color-mix(in srgb, var(--signal-bad) 40%, var(--border)); }
+.bank-session .meta { font-size: 12.5px; color: var(--text-muted); }
+.bank-accounts { margin: 0; padding-left: 18px; font-size: 13.5px; }
+.badge { font-size: 11.5px; padding: 2px 8px; border-radius: 999px; background: var(--bronze-soft); color: var(--bronze-ink); white-space: nowrap; }
+.badge.bad { background: color-mix(in srgb, var(--signal-bad) 14%, transparent); color: var(--signal-bad); }
+.bank-connect { margin-top: 14px; }
+.bank-connect h3 { margin-bottom: 8px; }
+.bank-pick { display: flex; gap: 8px; flex-wrap: wrap; }
+.bank-pick input { flex: 1; min-width: 220px; }
+.bank-finish { margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: var(--bronze-soft); }
+.bank-finish p { margin: 0 0 8px; }
+.bank-auto { margin-top: 14px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.small { font-size: 12.5px; }

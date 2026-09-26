@@ -170,7 +170,8 @@
     <section class="view" id="view-import" hidden>
       <div class="two-col">
         <div class="panel">
-          <h2>Datei importieren</h2>
+          <section class="bank" id="bank" aria-live="polite"></section>
+          <h2 class="mt">Datei importieren</h2>
           <label class="dropzone" id="dropzone">
             <input type="file" id="file-input" accept=".csv,.txt,.tsv" multiple hidden>
             <strong>CSV-Export hierher ziehen</strong>
@@ -272,5 +273,6 @@
   <script src="flow.js"></script>
   <script src="lake-flow.js"></script>
   <script src="app.js"></script>
+  <script src="bank-ui.js"></script>
 </body>
 </html>

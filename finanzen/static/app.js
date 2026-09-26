@@ -1208,6 +1208,7 @@ async function uploadFiles(files) {
 }
 
 async function loadImportView() {
+  window.BankUI?.render();
   $("#inbox-path").textContent = state.status?.inbox || "(Überwachung deaktiviert)";
   const rows = await api("GET", "/api/imports");
   $("#import-history").innerHTML = rows.map((r) => `
@@ -1341,18 +1342,21 @@ function wire() {
 
 // Neue Dateien aus der Inbox (automatischer Import) erkennen und die Ansicht auffrischen
 async function poll() {
+  if (document.hidden) return;                     // Tab im Hintergrund: nichts abfragen
   try {
     const before = state.status?.count;
-    const beforeImport = state.status?.last_import;
+    const version = state.status?.version;
     await loadStatus();
-    if (state.status.last_import !== beforeImport && before !== undefined) {
+    if (version !== undefined && state.status.version !== version) {
       const added = state.status.count - before;
-      if (added > 0) toast(`${added} neue Buchungen automatisch importiert`);
+      if (added > 0) toast(`${added} neue Buchung${added === 1 ? "" : "en"} eingegangen – Übersicht aktualisiert`);
       if (state.period !== "custom") [state.from, state.to] = computePeriod(state.period);
-      if (["dashboard", "transactions", "import"].includes(state.view)) refreshCurrent();
+      // Live: Übersicht, Umsätze und Import zeichnen sich neu (im Vollbild bleibt die Ansicht stehen)
+      if (["dashboard", "transactions", "import"].includes(state.view) && !(state.view === "dashboard" && zoom.level > 1)) refreshCurrent();
     }
   } catch { /* Server kurz weg – beim nächsten Mal wieder */ }
 }
+document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
 
 async function init() {
   UI.initMotion();
