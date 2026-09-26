@@ -86,6 +86,38 @@ def _fetch(conn, date_from, date_to, accounts):
     return [dict(r) for r in conn.execute(f"SELECT * FROM transactions WHERE {where} ORDER BY date, id", params)]
 
 
+def compare_range(cy, date_from, date_to, today=None):
+    """Vergleichszeitraum: vorheriger Gehaltsmonat, gleicher Zeitraum im Vorjahr (bei laufendem Jahr)
+    oder der gleich lange Zeitraum davor. Gibt (von, bis, Bezeichnung) zurück."""
+    today = today or date.today()
+    d0, d1 = date.fromisoformat(date_from), date.fromisoformat(date_to)
+    months = cy.keys_between(date_from, date_to)
+    if len(months) == 1 and cy.range_of(months[0]) == (date_from, date_to):
+        a, b = cy.range_of(cycles_mod._add_month(months[0], -1))
+        return a, b, "Vormonat"
+    if d0.month == 1 and d0.day == 1 and d1 >= today and d0.year == today.year:
+        # laufendes Jahr: mit demselben Zeitraum im Vorjahr vergleichen (01.01. bis heute)
+        end = today
+        try:
+            prev_end = end.replace(year=end.year - 1)
+        except ValueError:                                  # 29. Februar
+            prev_end = end.replace(year=end.year - 1, day=28)
+        return date(d0.year - 1, 1, 1).isoformat(), prev_end.isoformat(), f"01.01.–{prev_end:%d.%m.%Y}"
+    span = (d1 - d0).days + 1
+    return (d0 - timedelta(days=span)).isoformat(), (d0 - timedelta(days=1)).isoformat(), "Vorzeitraum"
+
+
+def _saving(cats, cl, txs):
+    """Netto aufs Sparen umgebucht (ohne „Eigene Konten“)."""
+    total = 0
+    for tx in txs:
+        if cl.kind(tx) == "transfer":
+            cat = cats.get(tx["category_id"])
+            if cat and "eigene konten" not in cat["name"].lower():
+                total -= tx["amount"]
+    return total
+
+
 def dashboard(conn, date_from=None, date_to=None, accounts=None):
     bounds = conn.execute("SELECT MIN(date), MAX(date) FROM transactions").fetchone()
     if bounds[0] is None:
@@ -99,19 +131,19 @@ def dashboard(conn, date_from=None, date_to=None, accounts=None):
     months = cy.keys_between(date_from, date_to)      # Gehaltsmonate (ohne Gehalt: Kalendermonate)
 
     # --- Kennzahlen inkl. Vergleich mit dem gleich langen Vorzeitraum ---
-    d0, d1 = date.fromisoformat(date_from), date.fromisoformat(date_to)
-    span = (d1 - d0).days + 1
-    prev_from, prev_to = d0 - timedelta(days=span), d0 - timedelta(days=1)
-    if len(months) == 1 and cy.range_of(months[0]) == (date_from, date_to):
-        # genau ein (Gehalts-)Monat: mit dem vorigen Gehaltsmonat vergleichen
-        a, b = cy.range_of(cycles_mod._add_month(months[0], -1))
-        prev_from, prev_to = date.fromisoformat(a), date.fromisoformat(b)
+    pf, pt, plabel = compare_range(cy, date_from, date_to)
+    prev_from, prev_to = date.fromisoformat(pf), date.fromisoformat(pt)
     income, expense, transfer = cl.totals(txs)
     prev = None
-    if prev_from.isoformat() >= bounds[0]:
-        p_income, p_expense, _ = cl.totals(_fetch(conn, prev_from.isoformat(), prev_to.isoformat(), accounts))
-        prev = {"income": p_income, "expense": p_expense, "net": p_income - p_expense,
-                "from": prev_from.isoformat(), "to": prev_to.isoformat()}
+    if prev_to.isoformat() >= bounds[0]:
+        ptx = _fetch(conn, prev_from.isoformat(), prev_to.isoformat(), accounts)
+        p_income, p_expense, _ = cl.totals(ptx)
+        p_saving = _saving(cats, cl, ptx)
+        prev = {"income": p_income, "expense": p_expense, "net": p_income - p_expense, "saving": p_saving,
+                # Übertrag: was im Vergleichszeitraum nach Ausgaben und Sparen übrig blieb (oder fehlte)
+                "carry": p_income - p_expense - p_saving,
+                "from": prev_from.isoformat(), "to": prev_to.isoformat(), "label": plabel,
+                "complete": prev_from.isoformat() >= bounds[0]}
 
     # --- Einzelaggregationen ---
     monthly = {m: {"month": m, "income": 0, "expense": 0} for m in months}
@@ -337,11 +369,13 @@ def measures(conn, targets, today=None, window=6):
     months = [m for m in (cycles_mod._add_month(ref_key, -i) for i in range(window, 0, -1)) if first and m >= cy.key_of(first)]
     cats = load_categories(conn)
     cl = Classifier(cats)
-    expense = fixed = 0
+    expense = fixed = income = 0
     by_cat = defaultdict(int)
     if months:
         txs = _fetch(conn, cy.range_of(months[0])[0], cy.range_of(months[-1])[1], None)
         for tx in txs:
+            if cl.kind(tx) == "income":
+                income += tx["amount"]
             if cl.kind(tx) != "expense":
                 continue
             value = -tx["amount"]
@@ -362,6 +396,7 @@ def measures(conn, targets, today=None, window=6):
         "salary_months": cy.active,
         "months": months,
         "avg_expense": avg_expense,
+        "avg_income": round(income / n) if months else None,     # Grundlage für den Monatsplan
         "avg_fixed": avg_fixed,
         "category_avg": {str(cid): round(v / n) for cid, v in by_cat.items()} if months else {},
         "soll": {
@@ -384,6 +419,17 @@ def category_flow(conn, cid, date_from=None, date_to=None, accounts=None, top=4)
         raise KeyError("Kategorie nicht gefunden")
     cl = Classifier(cats)
     groups = defaultdict(lambda: defaultdict(int))
+    prev_sub = defaultdict(int)
+    pf = pt = plabel = None
+    if date_from and date_to:
+        pf, pt, plabel = compare_range(cycles_mod.load(conn), date_from, date_to)
+        for tx in _fetch(conn, pf, pt, accounts):
+            if cl.kind(tx) != "expense":
+                continue
+            cat = cats.get(tx["category_id"])
+            if (cat["top_id"] if cat else 0) != cid:
+                continue
+            prev_sub[cat["name"] if cat and cat["parent_id"] else "Allgemein" if cat else "Nicht kategorisiert"] -= tx["amount"]
     for tx in _fetch(conn, date_from, date_to, accounts):
         if cl.kind(tx) != "expense":
             continue
@@ -404,7 +450,13 @@ def category_flow(conn, cid, date_from=None, date_to=None, accounts=None, top=4)
         rest = sum(v for _, v in items[top:])
         if rest > 0:
             shown.append({"name": f"{len(items) - top} weitere", "amount": rest, "rest": True})
-        children.append({"name": sub, "amount": total, "partners": shown})
-    children.sort(key=lambda c: -c["amount"])
+        children.append({"name": sub, "amount": total, "prev": max(prev_sub.get(sub, 0), 0), "partners": shown})
+    for sub, v in prev_sub.items():                        # im Vorzeitraum da, jetzt nicht mehr
+        if v > 0 and not any(c["name"] == sub for c in children):
+            children.append({"name": sub, "amount": 0, "prev": v, "partners": []})
+    children.sort(key=lambda c: -max(c["amount"], c["prev"]))
     name = cats[cid]["name"] if cid else "Nicht kategorisiert"
-    return {"id": cid, "name": name, "amount": sum(c["amount"] for c in children), "children": children}
+    return {"id": cid, "name": name, "amount": sum(c["amount"] for c in children),
+            "prev": sum(c["prev"] for c in children) if pf else None,
+            "prev_range": {"from": pf, "to": pt, "label": plabel} if pf else None,
+            "disc": bool(cats[cid].get("disc")) if cid else False, "children": children}

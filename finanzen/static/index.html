@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Finanzen</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%238a5a24'/><path d='M8 22 L14 15 L18 19 L24 10' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
-  <script>try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; const s = localStorage.getItem("scheme"); if (s === "tinte" || s === "graphit" || s === "salbei") document.documentElement.dataset.scheme = s; } catch (e) {}</script>
+  <script>try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; const s = localStorage.getItem("scheme"); if (s === "tinte" || s === "graphit" || s === "salbei") document.documentElement.dataset.scheme = s; const p = localStorage.getItem("pair"); if (p === "petrol" || p === "salbei") document.documentElement.dataset.pair = p; } catch (e) {}</script>
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -60,8 +60,14 @@
         <div class="kpis" id="kpis"></div>
         <!-- 2 · Geldfluss im Zentrum -->
         <article class="card flow-card" data-card="flow">
-          <header><div><h3>Geldfluss</h3><p id="flow-sub"></p></div></header>
+          <header><div><h3>Geldfluss</h3><p id="flow-sub"></p></div>
+            <div class="flow-controls">
+              <label class="switch" title="Übertrag aus dem Vergleichszeitraum einrechnen: Plus fließt blau zu, Minus fließt rot ab"><input type="checkbox" id="carry-toggle" checked><span></span>Rücklagen</label>
+              <label class="muted" style="font-size:12.5px">Farben <select id="pair-select" aria-label="Farbpaar Einnahmen/Ausgaben">
+                <option value="blau">Blau / Rot</option><option value="petrol">Petrol / Koralle</option><option value="salbei">Salbei / Terrakotta</option></select></label>
+            </div></header>
           <div class="flow" id="flow"></div>
+          <div class="flow-legend" id="flow-legend"></div>
         </article>
         <div class="grid">
           <!-- 3 · Budgets und Depot -->
@@ -146,6 +152,19 @@
 
     <!-- ======================= KATEGORIEN & REGELN ======================= -->
     <section class="view" id="view-categories" hidden>
+      <div class="panel plan-panel" id="plan-panel">
+        <div class="panel-head">
+          <div><h2>Monatsplan: Sparziel und Budgets</h2><p class="muted">Ein Gesamtziel pro Monat. Der Ausgabenrahmen (Ø Einkommen − Sparziel) verteilt sich auf die Kategorien.
+            Verschiebst du das Ziel, passen sich alle nicht gesperrten Budgets im Verhältnis an; verschiebst du ein Budget, gleichen die übrigen nicht gesperrten es aus.
+            „Steuerbar“ = Ausgaben, die du direkt beeinflussen kannst – sie erscheinen im Geldfluss im tieferen Ton.</p></div>
+          <span class="muted" id="plan-saved" aria-live="polite"></span>
+        </div>
+        <div class="plan-top">
+          <label>Sparziel pro Monat: <b id="plan-goal-v"></b><input type="range" id="plan-goal" min="0" max="60" step="1" aria-label="Sparziel in Prozent des Einkommens"></label>
+          <div class="plan-frame"><div class="muted">Ausgabenrahmen pro Monat</div><div class="v" id="plan-frame"></div><div class="muted" id="plan-frame-s"></div></div>
+        </div>
+        <div class="scroll-x"><table class="plan-table depth-table" id="plan-table"></table></div>
+      </div>
       <div class="two-col">
         <div class="panel">
           <div class="panel-head">

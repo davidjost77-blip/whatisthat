@@ -87,6 +87,7 @@
     const xL = narrow ? 150 : 210, xR = W - (narrow ? 170 : 230);
     const vmax = Math.max(1, ...srcs.map((n) => n.value), ...dsts.map((n) => n.value));
     const width = (v) => { const r = v / vmax; return Math.max(2.6, 58 * s * Math.sqrt(r) * (0.55 + 0.45 * Math.sqrt(r))); };
+    const lk = Object.assign({ left: "var(--lk-shallow)", center: "var(--lk-mid)", right: "var(--lk-shallow)", mid: 0.5 }, opts.lake || {});
     const reduced = root.UI?.reducedMotion?.() ?? matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     // ---------- Ufer: organisch, etwas runder als ein Ei, Ausbuchtung zu den Mündungen
@@ -128,7 +129,7 @@
       return ys;
     };
     const step = dsts.length > 1 ? Math.min(68, (H - 90) / (dsts.length - 1)) : 0;
-    const dstY = relax(dsts.map((_, i) => CY + (i - (dsts.length - 1) / 2) * step), dsts.map((n) => (n.cls === "bad" ? 58 : 44)), 36, H - 40);
+    const dstY = relax(dsts.map((_, i) => CY + (i - (dsts.length - 1) / 2) * step), dsts.map((n) => (/\bbad\b/.test(n.cls || "") ? 58 : 44)), 36, H - 40);
     const srcY = srcs.length === 1 ? [CY - 20 * s]
       : relax(srcs.map((_, i) => H * 0.36 + (i * H * 0.36) / Math.max(1, srcs.length - 1)), srcs.map(() => 48), 40, H - 40);
 
@@ -164,7 +165,7 @@
       return out.join("");
     }
 
-    const cls = (r) => `${r.dir} ${r.n.cls || ""}`;
+    const cls = (r) => `${r.dir} ${r.n.cls || ""} ${r.n.disc ? "disc" : ""}`;
     const veils = rivers.map((r) => `<path class="lf-veil ${cls(r)}" data-id="${esc(r.n.id)}" d="${outline(r.g)}"/>`).join("");
     const est = rivers.map((r) => `<path class="lf-est" data-id="${esc(r.n.id)}" d="${outline(r.g)}"/>`).join("");
     const bundles = rivers.map((r) => `<g class="lf-bundle ${cls(r)}" data-id="${esc(r.n.id)}">${bundle(r)}</g>`).join("");
@@ -176,7 +177,7 @@
     const labels = rivers.map((r) => {
       const n = r.n, left = r.dir === "in";
       const x = left ? xL - 14 : xR + 20, anchor = left ? "end" : "start";
-      const bad = n.cls === "bad";
+      const bad = /\bbad\b/.test(n.cls || "");
       const sub = n.sub && !bad ? ` <tspan class="flow-sub">· ${esc(n.sub)}</tspan>` : "";
       const warn = bad && n.sub ? `<text x="${x}" y="${f1(r.y + 30)}" text-anchor="${anchor}" class="lf-warn">${esc(n.sub)}</text>` : "";
       const dot = left ? "" : `<circle class="lf-mouth ${n.cls || ""}" cx="${xR + 6}" cy="${f1(r.y)}" r="3.6"/>`;
@@ -188,8 +189,12 @@
     }).join("");
 
     const defs = `<defs>
-      <linearGradient id="${id}gin" gradientUnits="userSpaceOnUse" x1="${xL}" y1="0" x2="${f1(CX - RX * 0.4)}" y2="0"><stop offset="0" class="lf-far"/><stop offset=".7" class="lf-mid"/><stop offset="1" class="lf-near"/></linearGradient>
-      <linearGradient id="${id}gout" gradientUnits="userSpaceOnUse" x1="${f1(CX + RX * 0.4)}" y1="0" x2="${xR}" y2="0"><stop offset="0" class="lf-near"/><stop offset=".3" class="lf-mid"/><stop offset="1" class="lf-far"/></linearGradient>
+      <linearGradient id="${id}gin" gradientUnits="userSpaceOnUse" x1="${xL}" y1="0" x2="${f1(CX - RX * 0.4)}" y2="0"><stop offset="0" class="i-far"/><stop offset=".7" class="i-mid"/><stop offset="1" class="i-near"/></linearGradient>
+      <linearGradient id="${id}gout" gradientUnits="userSpaceOnUse" x1="${f1(CX + RX * 0.4)}" y1="0" x2="${xR}" y2="0"><stop offset="0" class="o-near"/><stop offset=".3" class="o-mid"/><stop offset="1" class="o-far"/></linearGradient>
+      <linearGradient id="${id}lr" gradientUnits="userSpaceOnUse" x1="${f1(CX - RX * 1.05)}" y1="0" x2="${f1(CX + RX * 1.05)}" y2="0">
+        <stop offset="0" style="stop-color:${lk.left}"/><stop offset="${lk.mid}" style="stop-color:${lk.center}"/><stop offset="1" style="stop-color:${lk.right}"/></linearGradient>
+      <radialGradient id="${id}depth" cx="${CX}" cy="${CY}" r="${f1(RX * 1.08)}" gradientUnits="userSpaceOnUse" gradientTransform="translate(${CX} ${CY}) scale(1 ${(RY / RX).toFixed(3)}) translate(${-CX} ${-CY})">
+        <stop offset="0" style="stop-color:${lk.center};stop-opacity:.95"/><stop offset=".55" style="stop-color:${lk.center};stop-opacity:.55"/><stop offset="1" style="stop-color:${lk.center};stop-opacity:0"/></radialGradient>
       <radialGradient id="${id}lake" cx="${CX}" cy="${CY}" r="${f1(RX * 1.08)}" gradientUnits="userSpaceOnUse" gradientTransform="translate(${CX} ${CY}) scale(1 ${(RY / RX).toFixed(3)}) translate(${-CX} ${-CY})">
         <stop offset="0" class="lk-deep"/><stop offset=".55" class="lk-mid"/><stop offset=".95" class="lk-shallow"/></radialGradient>
       <filter id="${id}bf" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="3.2"/></filter>
@@ -201,11 +206,11 @@
       <mask id="${id}est" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><path d="${shore(REACH)}" fill="#fff" filter="url(#${id}b2)"/></mask>
     </defs>`;
     const lakeSvg = `<g class="lf-lake" data-id="__hub">
-      <path class="lf-halo" d="${shore(8)}" filter="url(#${id}bh)">${breathe(8, 17)}</path>
-      <path class="lf-water" d="${shore(0)}" fill="url(#${id}lake)" filter="url(#${id}bf)">${breathe(0, 13)}</path>
-      <text x="${CX}" y="${f1(CY - 12)}" class="lf-k" text-anchor="middle">${esc(hub.name)}</text>
-      <text x="${CX}" y="${f1(CY + 20)}" class="lf-v" text-anchor="middle">${esc(fmt(hub.value))}</text>
-      ${opts.hubSub ? `<text x="${CX}" y="${f1(CY + 41)}" class="lf-s" text-anchor="middle">${esc(opts.hubSub)}</text>` : ""}</g>`;
+      <path class="lf-halo" d="${shore(8)}" filter="url(#${id}bh)" style="fill:${lk.center}">${breathe(8, 17)}</path>
+      <path class="lf-water" d="${shore(0)}" fill="url(#${id}lr)" filter="url(#${id}bf)">${breathe(0, 13)}</path>
+      <path class="lf-depth" d="${shore(-6)}" fill="url(#${id}depth)" filter="url(#${id}bf)">${breathe(-6, 13)}</path>
+      ${(opts.hubLines || [{ cls: "lf-k", text: hub.name }, { cls: "lf-v", text: fmt(hub.value) }, ...(opts.hubSub ? [{ cls: "lf-s", text: opts.hubSub }] : [])])
+        .map((l, i, all) => `<text x="${CX}" y="${f1(CY + (i - (all.length - 1) / 2) * 21 + (l.cls === "lf-v" ? 8 : 4))}" class="${l.cls}" text-anchor="middle">${esc(l.text)}</text>`).join("")}</g>`;
 
     container.innerHTML = `<div class="flow-scroll"><svg class="flow-svg lf" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(opts.label || "Geldfluss")}">
       ${defs}
@@ -246,5 +251,59 @@
     svg.querySelectorAll(".lf-hit, .lf-label").forEach((el) => { const n = nodeOf(el); if (n?.click) el.classList.add("clickable"); });
   }
 
-  root.Flow = Object.assign(root.Flow || {}, { lake });
+  /**
+   * Unterdashboard: eine Kategorie verzweigt in ihre Unterkategorien – dieselben Fäden, ohne See.
+   * data = { source: {name, value, prev}, children: [{id, name, value, prev, disc?}] }
+   * Der frühere Zeitraum erscheint als gestrichelter „Schatten“-Lauf in seiner damaligen Breite.
+   */
+  function branch(container, data, opts = {}) {
+    const id = `lb${++uid}`;
+    const fmt = opts.format || ((v) => String(Math.round(v)));
+    const kids = data.children.filter((c) => c.value > 0 || c.prev > 0);
+    const W = Math.max(720, container.clientWidth || 1000);
+    const H = clamp(kids.length * 64 + 60, 260, 640);
+    const xL = 200, xR = W - 250;
+    const total = Math.max(1, data.source.value, data.source.prev || 0);
+    const k = Math.min(70, H * 0.3) / total;              // ehrlich: Breite ∝ Betrag
+    const wOf = (v) => Math.max(v > 0 ? 2 : 0, v * k);
+    const step = kids.length > 1 ? Math.min(66, (H - 70) / (kids.length - 1)) : 0;
+    const ty = kids.map((_, i) => H / 2 + (i - (kids.length - 1) / 2) * step);
+    let y = H / 2 - kids.reduce((a, c) => a + wOf(c.value), 0) / 2;
+    const parts = [], labels = [];
+    kids.forEach((c, i) => {
+      const w = wOf(c.value), wp = wOf(c.prev || 0);
+      const y0 = y + w / 2; y += w;
+      if (wp > 0) {                                           // Schatten: Vorzeitraum
+        const g = river([xL, y0], [xR, ty[i]], wp, i + 5, { amp: 5 });
+        parts.push(`<path class="lb-ghost" d="${outline(g, 0)}"/>`);
+      }
+      if (w > 0) {
+        const g = river([xL, y0], [xR, ty[i]], w, i + 5, { amp: 5 });
+        const cnt = Math.max(1, Math.floor(w / SPACING));
+        const rnd = rng(hash(c.name));
+        const lines = [];
+        for (let j = 0; j < cnt; j++) {
+          const u = (cnt === 1 ? 0 : (j / (cnt - 1)) * 2 - 1) * 0.9;
+          const d = line(g.pts.map((p, q) => [p[0] + g.N[q][0] * (g.ws[q] / 2) * u, p[1] + g.N[q][1] * (g.ws[q] / 2) * u]));
+          const dur = (SPEED * 5.5) / (1 - 0.55 * u * u) * (0.9 + 0.2 * rnd());
+          lines.push(`<path class="lf-strand" d="${d}" stroke-width="${STROKE}"/><path class="lf-thread" d="${d}" stroke-width="${STROKE}" style="stroke-dasharray:${PATTERNS[Math.floor(rnd() * PATTERNS.length)]};animation-duration:${dur.toFixed(2)}s;animation-delay:-${(rnd() * dur).toFixed(2)}s"/>`);
+        }
+        parts.push(`<path class="lf-veil out" d="${outline(g)}"/><g class="lf-bundle out ${c.disc ? "disc" : ""} ${c.cls || ""}">${lines.join("")}</g>`);
+      }
+      const d = (c.value || 0) - (c.prev || 0);
+      const up = d > 0;
+      const delta = c.prev == null ? "" : Math.abs(d) < 1 ? "wie zuvor" : `${up ? "+" : "−"}${fmt(Math.abs(d))}`;
+      labels.push(`<g class="lb-label"><circle class="lf-mouth ${c.cls || ""}" cx="${xR + 6}" cy="${f1(ty[i])}" r="3.6"/>
+        <text x="${xR + 20}" y="${f1(ty[i] - 3)}" class="flow-name">${esc(c.name)}</text>
+        <text x="${xR + 20}" y="${f1(ty[i] + 14)}" class="flow-value">${esc(fmt(c.value))}${c.prev != null ? ` <tspan class="flow-sub">· zuvor ${esc(fmt(c.prev))}</tspan> <tspan class="lb-delta ${up ? "up" : "down"}">${esc(delta)}</tspan>` : ""}</text></g>`);
+    });
+    const sd = data.source.prev != null ? data.source.value - data.source.prev : null;
+    const src = `<g class="lb-label"><text x="${xL - 14}" y="${f1(H / 2 - 3)}" text-anchor="end" class="flow-name">${esc(data.source.name)}</text>
+      <text x="${xL - 14}" y="${f1(H / 2 + 14)}" text-anchor="end" class="flow-value">${esc(fmt(data.source.value))}</text>
+      ${sd != null ? `<text x="${xL - 14}" y="${f1(H / 2 + 31)}" text-anchor="end" class="lb-delta ${sd > 0 ? "up" : "down"}">${sd > 0 ? "+" : "−"}${esc(fmt(Math.abs(sd)))} ggü. ${esc(opts.prevLabel || "Vorzeitraum")}</text>` : ""}</g>`;
+    container.innerHTML = `<div class="flow-scroll"><svg class="flow-svg lf lb" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(opts.label || data.source.name)}">
+      <g class="lb-ghosts">${parts.filter((p) => p.includes("lb-ghost")).join("")}</g>${parts.filter((p) => !p.includes("lb-ghost")).join("")}${src}${labels.join("")}</svg></div>`;
+  }
+
+  root.Flow = Object.assign(root.Flow || {}, { lake, branch });
 })(window);

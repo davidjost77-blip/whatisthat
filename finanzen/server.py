@@ -331,12 +331,14 @@ class App:
         budget = euro_to_cents(body["budget"]) if "budget" in body else current.get("budget")
         sort = int(body.get("sort", current.get("sort", 0)) or 0)
         fixed = 1 if body.get("fixed", current.get("fixed", 0)) else 0
-        return name, parent_id, kind, color, budget, sort, fixed
+        disc = 1 if body.get("disc", current.get("disc", 0)) else 0
+        locked = 1 if body.get("locked", current.get("locked", 0)) else 0
+        return name, parent_id, kind, color, budget, sort, fixed, disc, locked
 
     def create_category(self, conn, req):
         values = self._category_values(conn, req.json())
         cid = conn.execute(
-            "INSERT INTO categories (name, parent_id, kind, color, budget, sort, fixed) VALUES (?, ?, ?, ?, ?, ?, ?)", values
+            "INSERT INTO categories (name, parent_id, kind, color, budget, sort, fixed, disc, locked) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", values
         ).lastrowid
         conn.commit()
         return dict(conn.execute("SELECT * FROM categories WHERE id = ?", (cid,)).fetchone())
@@ -347,7 +349,7 @@ class App:
             raise ApiError("Kategorie nicht gefunden.", HTTPStatus.NOT_FOUND)
         values = self._category_values(conn, req.json(), dict(current))
         conn.execute(
-            "UPDATE categories SET name = ?, parent_id = ?, kind = ?, color = ?, budget = ?, sort = ?, fixed = ? WHERE id = ?",
+            "UPDATE categories SET name = ?, parent_id = ?, kind = ?, color = ?, budget = ?, sort = ?, fixed = ?, disc = ?, locked = ? WHERE id = ?",
             values + (cid,),
         )
         # Unterkategorien übernehmen Art der Oberkategorie

@@ -127,6 +127,14 @@ die Spaltennamen deiner Datei eintragen. Verfügbare Felder: `date`, `amount` (o
 Beim ersten Start wird ein Satz typischer deutscher Kategorien samt Regeln angelegt (Supermärkte, Tankstellen,
 Streaming, Versicherungen …) und für vier Kategorien ein Beispiel-Budget gesetzt. Alles davon kannst du ändern oder löschen.
 
+### Monatsplan: ein Sparziel, Budgets im Verhältnis
+
+Oben unter *Kategorien & Regeln*: Du setzt **ein Sparziel pro Monat** (in % des Ø Einkommens der letzten 6 Monate).
+Der Rest ist dein Ausgabenrahmen, verteilt auf die Kategorien. Verschiebst du das Ziel, passen sich alle nicht
+gesperrten Budgets im Verhältnis an; verschiebst du ein Budget, gleichen die übrigen nicht gesperrten es aus.
+Fixkosten sind standardmäßig **gesperrt**. **Steuerbar** markiert Kategorien, die du direkt beeinflussen kannst
+(Standard Freizeit, Shopping) – sie erscheinen im Geldfluss im tieferen Ton. Änderungen werden sofort gespeichert.
+
 ### Monate = Gehaltsmonate, Startseite = laufender Monat
 
 Die Startseite zeigt den **laufenden Monat** („Dieser Monat“). Ein Monat reicht immer **vom Gehaltseingang bis
@@ -152,16 +160,21 @@ Panel: eine Karte nach der anderen, größter Betrag zuerst, gruppiert nach Empf
 
 ## Dashboards
 
-Gestaltet nach **[DESIGN.md](DESIGN.md)** (verbindlich, Stand 6): wählbares Farbschema (Standard „Papier & Bronze“, dazu Tinte, Graphit, Salbei), Geldfluss als See mit feinen Fäden,
+Gestaltet nach **[DESIGN.md](DESIGN.md)** (verbindlich, Stand 8): wählbares Farbschema (Standard „Papier & Bronze“, dazu Tinte, Graphit, Salbei), Geldfluss als See mit feinen Fäden,
 Rot nur für Warnungen, Schrift Inter, Umschalter Hell/Dunkel/System, Bewegung in allen Teilen, jede Zahl mit Soll-Wert
 und Alltagsäquivalent.
 
 Die Startseite zeigt alles auf einen Blick, geordnet nach Wichtigkeit, und folgt der Filterleiste (Zeitraum, Konto):
 
-1. **Kennzahlen**: Einnahmen, Ausgaben (gegen das Monats-Soll), Überschuss, Sparquote (gegen 20 %)
-2. **Geldfluss** im Zentrum: links die Einnahmequellen, rechts die Kategorien, „Sparen & Depot“ und „Übrig“. Die Ströme
-   fließen dauerhaft, ihre Breite entspricht dem Betrag, Kategorien über Soll sind rot. **Klick auf eine Kategorie** zeigt
-   ihre Zusammensetzung: Unterkategorien und größte Empfänger als eigener Fluss.
+1. **Kennzahlen**: neues Einkommen, Ausgaben (Anteil vom neuen Einkommen, gegen den anteiligen Plan), Differenz
+   (mit eingeschalteten Rücklagen inkl. Übertrag aus dem Vergleichszeitraum), Sparquote (gegen dein Sparziel)
+2. **Geldfluss** im Zentrum: links die Einnahmen in der Einnahmenfarbe, rechts Kategorien, „Sparen & Depot“ und
+   „Übrig“ in der Ausgabenfarbe; steuerbare Kategorien im tieferen Ton. Der See zeigt rein, raus und die Differenz und
+   färbt sich nach dem Abstand zum anteiligen Plan (je kräftiger, desto weiter weg). Der Schalter **Rücklagen** holt
+   den Übertrag aus dem Vergleichszeitraum dazu – ein Plus fließt blau zu, ein Minus rot ab. Das **Farbpaar** (Blau/Rot,
+   Petrol/Koralle, Salbei/Terrakotta) wählst du im Geldfluss. Rot gewarnt wird nur ab 100 € Kategoriesumme.
+   **Klick auf eine Kategorie** öffnet ihr Unterdashboard: Unterkategorien gegen den Vergleichszeitraum (Vormonat;
+   beim laufenden Jahr derselbe Zeitraum im Vorjahr).
 3. **Kategorien gegen Soll** (Budget bzw. Ø der letzten 6 Monate) und **Depot & Sparplan**
 4. **Einnahmen & Ausgaben pro Monat**
 5. **Größte Ausgaben** und **Top-Empfänger**

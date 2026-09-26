@@ -152,10 +152,26 @@ Entworfen und abgestimmt im Claude-Design-Canvas (Variante „Final“).
   flacher Trichter in jeden Fluss hinein. Keine harte Kante, kein Faden ragt in den See.
 - **Keine Überschneidungen**: Jeder Fluss bekommt einen eigenen Ufer-Abschnitt; der oberste Zufluss mündet oben,
   der oberste Abfluss verlässt den See oben.
-- Farben aus dem Farbschema; „Sparen & Depot“ im kräftigen Akzent, „Übrig“ grau, Kategorien über Soll rot mit ⚠.
-- Überfahren hebt den Fluss hervor und zeigt Betrag, Äquivalent und Soll. Klick: Kategorie → Zusammensetzung,
+- **Zwei Seiten, zwei Farben** (Stand 8): Zuflüsse in der Einnahmenfarbe, Abflüsse in der Ausgabenfarbe. Farbpaar
+  wählbar im Geldfluss: Blau/Rot (Standard), Petrol/Koralle, Salbei/Terrakotta – je hell und dunkel. *Steuerbare*
+  Kategorien (Standard Freizeit, Shopping; änderbar im Monatsplan) im tiefen, vollen Ton, übrige Ausgaben blasser.
+  „Sparen & Depot“ in der Einnahmenfarbe mit dunklerem Ton, „Übrig“ grau.
+- **Der See zeigt rein, raus und die Differenz** und färbt sich nach dem Abstand zum *anteiligen Plan* des Zeitraums
+  (Budgets je Kategorie; Fixkosten zählen ab Monatsbeginn voll, der Rest gleichmäßig über die Tage): links
+  Einnahmen-, rechts Ausgabenfarbe, die Mitte nimmt die Farbe der Seite an, die Überhand hat – je weiter vom Plan
+  entfernt, desto kräftiger (volle Stärke bei 12 % des Einkommens); die überwiegende Seite nimmt mehr vom See ein.
+- **Rücklagen (Übertrag)** schaltbar: Was im Vergleichszeitraum nach Ausgaben und Sparen übrig blieb, fließt als
+  blauer Strom zu („Übertrag aus August“); ein Minus fließt als roter Strom ab („Ausgleich Minus aus August“) – immer
+  blau/rot, unabhängig vom Farbpaar. Ohne vollständige Daten im Vergleichszeitraum kein Übertrag (mit Hinweis).
+- **Warnung** (rot, ⚠ mit Betrag) nur, wenn eine Kategorie über ihrem anteiligen Plan liegt **und** mindestens 100 €
+  ausmacht; kleinere Posten werden nie rot.
+- Überfahren hebt den Fluss hervor und zeigt Betrag, Äquivalent und Plan. Klick: Kategorie → Unterdashboard,
   Einnahme → Umsätze, Sparen → Sparplan. Mit „Bewegung aus“ stehen Fäden und Ufer still.
-- Die Zusammensetzung einer Kategorie (drei Spalten) zeigt weiterhin das Band-Diagramm aus `flow.js`.
+- **Unterdashboard einer Kategorie** (`Flow.branch`, ohne See): dieselben feinen Fäden von der Kategorie zu ihren
+  Unterkategorien; gestrichelt die Breite im Vergleichszeitraum, dazu Differenz je Unterkategorie (mehr = Ausgaben-,
+  weniger = Einnahmenfarbe), Tabelle und Kategorie-Wechsel per Chips.
+- **Vergleichszeitraum**: Gehaltsmonat → Vormonat; laufendes Jahr → gleicher Zeitraum im Vorjahr (01.01. bis heute);
+  sonst der gleich lange Zeitraum davor.
 
 ### 8a. Metaphern in Karten
 Kleine Metaphern bleiben dort, wo sie schneller sind als eine Zahl: **Spur mit Soll-Strich** (Kategorien, Depot),
@@ -165,7 +181,7 @@ Kleine Metaphern bleiben dort, wo sie schneller sind als eine Zahl: **Spur mit S
 - [ ] Steht das Element auf der Startseite an der Stelle, die seiner Wichtigkeit entspricht? Vollbild per ⤢ vorhanden, wo es hilft?
 - [ ] Breadcrumb sichtbar, Esc geht eine Stufe zurück, URL enthält die Stufe
 - [ ] Jede Zahl hat Soll oder Vergleich **und** ein Alltagsäquivalent
-- [ ] Nur Bronze und warme Graustufen; Rot nur für Handlungsbedarf, immer mit Symbol + Text
+- [ ] Akzent des Farbschemas und warme Graustufen (im Geldfluss das Farbpaar); Rot-Warnung nur für Handlungsbedarf, immer mit Symbol + Text
 - [ ] Kein Tacho, kein Kreis, nichts blinkt oder flackert
 - [ ] Eintritt/Übergang vorhanden, räumlich, ≤ 450 ms beim Zoom; Bewegungs-Schalter und reduzierte Bewegung respektiert
 - [ ] Hell- und Dunkelmodus geprüft, Handybreite ohne horizontales Scrollen
@@ -174,6 +190,10 @@ Kleine Metaphern bleiben dort, wo sie schneller sind als eine Zahl: **Spur mit S
 
 ## Änderungen
 
+- **Stand 8** (nach Entwurf, abgenommen): Geldfluss mit Einnahmen-/Ausgabenfarbe (Farbpaar wählbar), See gefärbt
+  nach dem anteiligen Plan, Rücklagen-Schalter (Übertrag aus dem Vergleichszeitraum), steuerbare Kategorien im tiefen
+  Ton, Warnungen erst ab 100 €, Unterdashboard je Kategorie mit Vergleich, Jahresvergleich mit gleichem Zeitraum im
+  Vorjahr. Monatsplan: ein Sparziel, Budgets passen sich im Verhältnis an (§8).
 - **Stand 7** (auf Wunsch): Startseite zeigt den laufenden Monat statt 12 Monate. Monate sind Gehaltsmonate
   (vom Gehalt bis vor das nächste Gehalt). Neu: Zuordnen-Panel für Buchungen ohne Kategorie und unsichere Zuordnungen.
 - **Stand 6** (nach Auswahl im Claude-Design-Canvas): Der Geldfluss ist ein See, in den Flüsse aus feinen Fäden

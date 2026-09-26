@@ -712,35 +712,93 @@ function renderStart() {
   badge.title = `${d.kpis.uncategorized} Buchungen ohne Kategorie`;
 }
 
+// ---------- Anzeige-Einstellungen: Rücklagen (Übertrag) und Farbpaar, je Browser gespeichert
+const PREFS = {
+  get carry() { try { return localStorage.getItem("carry") !== "0"; } catch { return true; } },
+  set carry(on) { try { localStorage.setItem("carry", on ? "1" : "0"); } catch { /* privater Modus */ } },
+  get pair() { try { return localStorage.getItem("pair") || "blau"; } catch { return "blau"; } },
+  set pair(v) {
+    try { localStorage.setItem("pair", v); } catch { /* privater Modus */ }
+    if (v === "blau") delete document.documentElement.dataset.pair; else document.documentElement.dataset.pair = v;
+  },
+};
+/** Kategorien unter diesem Betrag (in €) erscheinen nie als Warnung (DESIGN.md §6). */
+const WARN_MIN = 100;
+const isOver = (v, soll) => soll != null && v >= WARN_MIN && v > soll * (1 + TOLERANCE) && v - soll >= 5;
+
+/** Übertrag aus dem Vergleichszeitraum (Rücklagen): Betrag in € und Herkunft, sonst null. */
+function carryInfo(d) {
+  const p = d.kpis.prev;
+  if (!p || p.carry == null) return null;
+  const months = d.range.months;
+  const from = p.label === "Vormonat" && months.length === 1 ? monthLong(shiftMonth(months[0], -1))
+    : p.label === "Vorzeitraum" ? "dem Vorzeitraum" : p.label;
+  return { value: eurOf(p.carry), from, complete: p.complete };
+}
+/** „429 € unter Plan“ / „37 € über Plan“ – Vorzeichen sind hier missverständlich. */
+const planWord = (v) => `${UI.money0(Math.abs(v))} ${v >= 0 ? "unter" : "über"} Plan`;
+const carryOf = (d) => { const c = carryInfo(d); return PREFS.carry && c?.complete ? c : null; };
+
+/** Anteiliger Plan im Zeitraum: Fixkosten zählen ab Monatsbeginn voll, der Rest gleichmäßig über die Tage. */
+function planStatus(d) {
+  const r = d.range, ref = dash.ref || r.to;
+  const total = dayDiff(r.from, r.to) + 1;
+  const progress = ref >= r.to ? 1 : ref < r.from ? 0 : (dayDiff(r.from, ref) + 1) / total;
+  const started = r.months.filter((ym) => monthRange(ym)[0] <= ref).length;
+  const actual = new Map(d.categories.map((c) => [c.id, eurOf(c.amount)]));
+  const soll = new Map();
+  let expected = 0, spent = 0;
+  for (const c of state.categories) {
+    if (c.parent_id || c.kind !== "expense") continue;
+    const cents = c.budget || dash.m?.category_avg?.[String(c.id)];
+    if (!cents) continue;
+    const s = eurOf(cents) * (c.fixed ? started : r.months.length * progress);
+    soll.set(c.id, s);
+    expected += s;
+    spent += actual.get(c.id) || 0;
+  }
+  return { progress, soll, expected, vsPlan: soll.size ? expected - spent : null };
+}
+
 // 1 · Kennzahlen mit Maßstab
 function renderKpis(d) {
-  const k = d.kpis, prev = k.prev || {}, m = d.monthly, n = periodMonths();
-  const sollMonth = dash.m?.soll?.monthly_expense ? eurOf(dash.m.soll.monthly_expense) : null;
-  const sollExpense = sollMonth != null ? sollMonth * n : null;
-  const expense = eurOf(k.expense), income = eurOf(k.income), net = eurOf(k.net);
+  const k = d.kpis, prev = k.prev || {}, m = d.monthly;
+  const f = d.flow;
+  const expense = eurOf(k.expense), income = eurOf(k.income);
+  const saving = eurOf(f.saving) || eurOf(f.depot);
   const sollRate = dash.m?.soll?.savings_rate ?? 20;
-  const overExpense = sollExpense != null && expense > sollExpense * (1 + TOLERANCE);
+  const plan = planStatus(d);
+  const share = income > 0 ? (expense / income) * 100 : null;
+  const overShare = share != null && share > 100 - sollRate;
+  const diff = income - expense - saving;
+  const carry = carryOf(d);
+  const net = diff + (carry?.value || 0);
   const lowRate = k.savings_rate != null && k.savings_rate < sollRate;
+  const planText = plan.vsPlan == null ? "" : `<span class="${plan.vsPlan < 0 ? "sig-bad" : "sig-good"}">${planWord(plan.vsPlan)} (anteilig)</span>`;
   const tiles = [
-    { label: "Einnahmen", value: UI.money0(income), sub: deltaText(k.income, prev.income, true), spark: m.map((x) => x.income) },
-    { label: "Ausgaben", key: "ausgaben", value: UI.money0(expense), bad: overExpense,
-      sub: sollExpense != null ? `<span class="${overExpense ? "sig-bad" : ""}">${overExpense ? "⚠ " : ""}Soll ${UI.money0(sollExpense)}</span> · ${deltaText(k.expense, prev.expense, false)}` : deltaText(k.expense, prev.expense, false),
+    { label: "Neues Einkommen", value: UI.money0(income), sub: deltaText(k.income, prev.income, true), spark: m.map((x) => x.income) },
+    { label: "Ausgaben", key: "ausgaben", value: UI.money0(expense), bad: plan.vsPlan != null && plan.vsPlan < -5,
+      sub: `${share == null ? "" : `<span class="${overShare ? "sig-bad" : ""}">${UI.pct(share, 0)} vom neuen Einkommen</span> · `}${planText || deltaText(k.expense, prev.expense, false)}`,
+      bar: share == null ? "" : `<div class="spent-bar" title="Anteil des neuen Einkommens, der ausgegeben wurde; Strich = Plan höchstens ${100 - sollRate} %"><i style="width:${Math.min(100, share)}%"></i><b style="left:${100 - sollRate}%"></b></div>`,
       spark: m.map((x) => x.expense) },
-    { label: "Überschuss", value: UI.money0(net), bad: net < 0, sub: `<span class="equiv">${UI.equiv(net)}</span> · ${deltaText(k.net, prev.net, true)}`, spark: m.map((x) => x.net) },
+    { label: carry ? "Differenz inkl. Übertrag" : "Differenz", value: UI.signed(net), tone: net >= 0 ? "in-tone" : "out-tone",
+      sub: carry ? `${UI.signed(diff)} aus diesem Zeitraum · ${UI.signed(carry.value)} Übertrag aus ${esc(carry.from)}`
+        : `Einkommen − Ausgaben${saving ? " − Sparen" : ""} · ${deltaText(k.net, prev.net, true)}`,
+      spark: m.map((x) => x.net) },
     { label: "Sparquote", key: "sparquote", value: k.savings_rate == null ? "–" : UI.pct(k.savings_rate), bad: lowRate,
-      sub: k.savings_rate == null ? `<span class="muted">zu wenig Einnahmen im Zeitraum</span>` : `<span class="${lowRate ? "sig-bad" : "sig-good"}">${lowRate ? "⚠" : "✓"} Soll ${UI.pct(sollRate)}</span>`,
+      sub: k.savings_rate == null ? `<span class="muted">zu wenig Einnahmen im Zeitraum</span>` : `<span class="${lowRate ? "sig-bad" : "sig-good"}">${lowRate ? "⚠" : "✓"} Ziel ${UI.pct(sollRate)}</span>`,
       spark: m.map((x) => (x.income ? Math.max((x.net / x.income) * 100, -100) : 0)) },
   ];
   $("#kpis").innerHTML = tiles.map((x) => `
     <div class="kpi${x.bad ? " is-bad" : ""}">
       <div class="label">${x.label}${x.key ? `<button class="zoom-btn" type="button" data-zoom="${x.key}" title="Im Vollbild öffnen" aria-label="${x.label} im Vollbild öffnen">⤢</button>` : ""}</div>
-      <div class="value${x.bad ? " sig-bad" : ""}">${x.value}</div>
+      <div class="value${x.bad ? " sig-bad" : ""}${x.tone ? ` ${x.tone}` : ""}">${x.value}</div>
       <div class="delta">${x.sub}</div>
-      ${sparkline(x.spark)}
+      ${x.bar || sparkline(x.spark)}
     </div>`).join("");
 }
 
-// 2 · Geldfluss im Zentrum
+// 2 · Geldfluss im Zentrum: links Zuflüsse (neues Einkommen, Plus aus dem Vorzeitraum), rechts Abflüsse
 const MAX_TARGETS = 8;
 function renderFlow(d) {
   const f = d.flow;
@@ -750,51 +808,66 @@ function renderFlow(d) {
   const saving = eurOf(f.saving) || eurOf(f.depot);
   const savingLabel = f.saving ? (f.saving_parts.length === 1 ? `${f.saving_parts[0].name} & Depot` : "Sparen & Depot") : "Sparplan (Depot)";
   const expense = cats.reduce((s, c) => s + eurOf(c.amount), 0);
-  const outflow = expense + saving;
-  const left = income - outflow;
-  const nodes = [], links = [];
-  f.sources.forEach((s, i) => {
-    nodes.push({ id: `in${i}`, name: s.name, value: eurOf(s.amount), col: 0, click: true, cat: s.id,
-      ...(s.id === 0 ? { kind: "review", sub: "⚑ zuordnen" } : { kind: "income" }) });
-    links.push({ from: `in${i}`, to: "hub", value: eurOf(s.amount) });
-  });
-  if (left < 0) {
-    nodes.push({ id: "reserve", name: "Aus Rücklagen", value: -left, col: 0, cls: "rest" });
-    links.push({ from: "reserve", to: "hub", value: -left, cls: "rest" });
-  }
-  nodes.push({ id: "hub", name: "Verfügbar", value: Math.max(income, outflow), col: 1, cls: "hub" });
+  const carryAll = carryInfo(d);
+  const carry = carryOf(d);
+  const plus = carry && carry.value > 0 ? carry.value : 0, minus = carry && carry.value < 0 ? -carry.value : 0;
+  const inflow = income + plus, outflow = expense + saving + minus;
+  const net = inflow - outflow;
+  const plan = planStatus(d);
+  const base = income || outflow || 1;
+  const nodes = [];
+  f.sources.forEach((s, i) => nodes.push({ id: `in${i}`, name: s.name, value: eurOf(s.amount), col: 0, click: true, cat: s.id,
+    ...(s.id === 0 ? { kind: "review", cls: "review", sub: "⚑ zuordnen" } : { kind: "income" }) }));
+  if (plus) nodes.push({ id: "carry", name: `Übertrag aus ${carry.from}`, value: plus, col: 0, cls: "carry-pos", kind: "carry", sub: "Plus" });
+  if (net < 0) nodes.push({ id: "gap", name: "Fehlbetrag", value: -net, col: 0, cls: "rest", sub: "aus dem Kontostand" });
+  nodes.push({ id: "hub", name: "See", value: Math.max(inflow, outflow), col: 1 });
   for (const c of shown) {
-    const soll = catSoll(c.id);
+    const soll = plan.soll.get(c.id) ?? null;
     const v = eurOf(c.amount);
-    const bad = soll != null && v > soll * (1 + TOLERANCE) && v - soll >= 5;
-    nodes.push({ id: `c${c.id}`, name: c.name, value: v, col: 2, cls: bad ? "bad" : "", click: true, cat: c.id, kind: c.id === 0 ? "review" : "expense", soll,
-      sub: c.id === 0 ? "⚑ zuordnen" : bad ? `⚠ +${UI.money0(v - soll)}` : `${UI.pct((v / (income || outflow)) * 100, 0)}` });
-    links.push({ from: "hub", to: `c${c.id}`, value: v, cls: bad ? "bad" : "" });
+    const bad = c.id !== 0 && isOver(v, soll);
+    const disc = !!state.cats.get(c.id)?.disc;
+    nodes.push({ id: `c${c.id}`, name: c.name, value: v, col: 2, disc, cls: c.id === 0 ? "review" : bad ? "bad" : "", click: true, cat: c.id,
+      kind: c.id === 0 ? "review" : "expense", soll,
+      sub: c.id === 0 ? "⚑ zuordnen" : bad ? `⚠ +${UI.money0(v - soll)} über Plan` : UI.pct((v / base) * 100, 0) });
   }
-  if (rest.length) {
-    const v = rest.reduce((s, c) => s + eurOf(c.amount), 0);
-    nodes.push({ id: "other", name: `${rest.length} weitere`, value: v, col: 2, cls: "rest" });
-    links.push({ from: "hub", to: "other", value: v, cls: "rest" });
-  }
-  if (saving > 0) {
-    nodes.push({ id: "save", name: savingLabel, value: saving, col: 2, cls: "save", click: true, kind: "save", sub: `${UI.pct((saving / (income || outflow)) * 100, 0)}` });
-    links.push({ from: "hub", to: "save", value: saving, cls: "save" });
-  }
-  if (left > 0) {
-    nodes.push({ id: "left", name: "Übrig", value: left, col: 2, cls: "rest", sub: UI.equiv(left) });
-    links.push({ from: "hub", to: "left", value: left, cls: "rest" });
-  }
-  $("#flow-sub").textContent = `${periodLabel()} · Einnahmen ${UI.money0(income)} → Ausgaben ${UI.money0(expense)}${saving ? `, gespart ${UI.money0(saving)}` : ""}${left > 0 ? `, übrig ${UI.money0(left)}` : ""}. Kategorie anklicken für die Zusammensetzung.`;
-  Flow.lake($("#flow"), { nodes, links }, {
+  if (rest.length) nodes.push({ id: "other", name: `${rest.length} weitere`, value: rest.reduce((s, c) => s + eurOf(c.amount), 0), col: 2, cls: "rest" });
+  if (saving > 0) nodes.push({ id: "save", name: savingLabel, value: saving, col: 2, cls: "save", click: true, kind: "save", sub: UI.pct((saving / base) * 100, 0) });
+  if (minus) nodes.push({ id: "carry", name: `Ausgleich Minus aus ${carry.from}`, value: minus, col: 2, cls: "carry-neg", kind: "carry", sub: "Minus" });
+  if (net > 0) nodes.push({ id: "left", name: "Übrig", value: net, col: 2, cls: "rest", sub: UI.equiv(net) });
+
+  // Seefarbe: wer Überhand hat, färbt die Mitte – je weiter vom anteiligen Plan entfernt, desto kräftiger
+  const score = plan.vsPlan == null ? Math.max(-1, Math.min(1, net / (base * 0.12))) : Math.max(-1, Math.min(1, plan.vsPlan / (base * 0.12)));
+  const tint = (c, t) => `color-mix(in srgb, ${c} ${Math.round(t * 100)}%, var(--lake-base))`;
+  const lake = {
+    left: "color-mix(in srgb, var(--flow-in) 45%, var(--mix-base))",
+    right: "color-mix(in srgb, var(--flow-out) 45%, var(--mix-base))",
+    center: score >= 0 ? tint("var(--flow-in)", 0.35 + 0.65 * score) : tint("var(--flow-out)", 0.35 + 0.65 * -score),
+    mid: (0.5 - 0.3 * score).toFixed(2),
+  };
+  const carryNote = !PREFS.carry ? " · Rücklagen ausgeblendet"
+    : carry ? ` · Übertrag aus ${carry.from} ${UI.signed(carry.value)}`
+    : carryAll && !carryAll.complete ? " · kein Übertrag: Vergleichszeitraum nicht vollständig in den Daten" : "";
+  $("#flow-sub").textContent = `${periodLabel()}${carryNote}. Kategorie anklicken für Details und Vergleich.`;
+  $("#flow-legend").innerHTML = `<span><i style="background:var(--flow-in)"></i>Einnahmen</span>
+    <span><i style="background:color-mix(in srgb, var(--flow-out) 60%, var(--mix-base))"></i>Ausgaben</span>
+    <span><i style="background:var(--flow-out)"></i>steuerbar</span>
+    ${carry ? `<span><i style="background:${carry.value >= 0 ? "var(--carry-pos)" : "var(--carry-neg)"}"></i>Übertrag</span>` : ""}
+    <span class="muted">See: ${plan.vsPlan == null ? "Differenz" : "Abstand zum anteiligen Plan"} – ${score >= 0 ? "Einnahmenfarbe = im Plus" : "Ausgabenfarbe = im Minus"}</span>`;
+  Flow.lake($("#flow"), { nodes }, {
     label: "Geldfluss: Einnahmen links münden in den See, Ausgaben und Sparen fließen rechts ab",
-    hubSub: periodLabel(),
     format: (v) => UI.money0(v),
-    detail: (x, type, from, to) => {
-      if (type === "node") {
-        const soll = x.soll != null ? `<br>Soll ${UI.money0(x.soll)}${x.value > x.soll ? ` · <span class="sig-bad">⚠ ${UI.money0(x.value - x.soll)} drüber</span>` : ""}` : "";
-        return `<b>${esc(x.name)}</b> · ${UI.money0(x.value)}<br><span class="muted">${UI.equiv(x.value)}</span>${soll}${x.click ? `<br><span class="muted">Klick: ${x.kind === "save" ? "zum Sparplan" : x.kind === "review" ? "jetzt zuordnen" : x.kind === "income" ? "Umsätze zeigen" : "Zusammensetzung"}</span>` : ""}`;
-      }
-      return `${esc(from.name)} → <b>${esc(to.name)}</b><br>${UI.money0(x.value)} · <span class="muted">${UI.equiv(x.value)}</span>`;
+    lake,
+    hubLines: [
+      { cls: "lf-k", text: carry ? "Differenz inkl. Übertrag" : "Differenz" },
+      { cls: "lf-v", text: UI.signed(net) },
+      { cls: "lf-s", text: `${UI.money0(inflow)} rein · ${UI.money0(outflow)} raus` },
+      { cls: "lf-s", text: plan.vsPlan == null ? periodLabel() : `${planWord(plan.vsPlan)} (anteilig)` },
+    ],
+    detail: (x) => {
+      if (x.col === 1) return `<b>${net >= 0 ? "Im Plus" : "Im Minus"}</b> ${UI.signed(net)}${plan.vsPlan != null ? `<br>${planWord(plan.vsPlan)} (anteilig)<br><span class="muted">Plan bis heute ${UI.money0(plan.expected)} (${UI.pct(plan.progress * 100, 0)} des Zeitraums)</span>` : ""}`;
+      if (x.kind === "carry") return `<b>${esc(x.name)}</b> · ${UI.money0(x.value)}<br><span class="muted">Was im Vergleichszeitraum nach Ausgaben und Sparen ${x.cls === "carry-pos" ? "übrig blieb" : "fehlte"}. Ausblenden über „Rücklagen“.</span>`;
+      const soll = x.soll != null ? `<br>Plan bis heute ${UI.money0(x.soll)}${x.value > x.soll ? ` · <span class="${/\bbad\b/.test(x.cls) ? "sig-bad" : "muted"}">${UI.money0(x.value - x.soll)} drüber</span>` : ""}` : "";
+      return `<b>${esc(x.name)}</b> · ${UI.money0(x.value)}${x.disc ? ` <span class="tag-disc">steuerbar</span>` : ""}<br><span class="muted">${UI.equiv(x.value)}</span>${soll}${x.click ? `<br><span class="muted">Klick: ${x.kind === "save" ? "zum Sparplan" : x.kind === "review" ? "jetzt zuordnen" : x.kind === "income" ? "Umsätze zeigen" : "Details & Vergleich"}</span>` : ""}`;
     },
     onClick: (n, el) => {
       if (n.kind === "review") return window.Review?.open();
@@ -811,7 +884,7 @@ function renderBudgets(d) {
   const rows = d.categories.filter((c) => c.amount > 0 && c.id).map((c) => {
     const soll = catSoll(c.id);
     const v = eurOf(c.amount);
-    return { c, v, soll, bad: soll != null && v > soll * (1 + TOLERANCE) && v - soll >= 5 };
+    return { c, v, soll, bad: isOver(v, soll) };
   }).filter((r) => r.soll != null).sort((a, b) => (b.v / b.soll) - (a.v / a.soll)).slice(0, 7);
   const over = rows.filter((r) => r.bad);
   $("#budget-sub").innerHTML = over.length ? `<span class="sig-bad">⚠ ${over.length} über Soll</span> · Soll = Budget bzw. Ø 6 Monate × ${periodMonths()}` : `✓ alle im Rahmen · Soll = Budget bzw. Ø 6 Monate × ${periodMonths()}`;
@@ -891,49 +964,61 @@ function renderPartners(d) {
   $$("#partners .partner").forEach((el) => (el.onclick = () => goToTransactions({ q: el.dataset.q, from: dash.period.range.from, to: dash.period.range.to, direction: "out" })));
 }
 
-// ---------- Vollbild „Zusammensetzung“: Kategorie → Unterkategorien → Empfänger
+// ---------- Vollbild „Zusammensetzung“: Unterdashboard einer Kategorie – Unterkategorien gegen den Vergleichszeitraum
+/** Bezeichnung des Vergleichszeitraums („August 2026“, „01.01.–26.09.2025“, „Vorzeitraum“). */
+function prevLabelOf(pr) {
+  if (!pr) return "Vorzeitraum";
+  return pr.label === "Vormonat" ? monthLong(monthOf(pr.from)) : pr.label;
+}
 async function focusComposition(body) {
   disposeCharts(2);
   const id = dash.flowCat ?? dash.period?.categories?.[0]?.id ?? 0;
   const r = dash.period.range;
   const data = await api("GET", `/api/category_flow?${filterQuery({ id, from: r.from, to: r.to })}`);
   dash.composition = data;
-  const total = eurOf(data.amount);
-  const soll = catSoll(id);
-  const bad = soll != null && total > soll * (1 + TOLERANCE);
+  const total = eurOf(data.amount), prev = data.prev != null ? eurOf(data.prev) : null;
+  const plan = planStatus(dash.period);
+  const soll = plan.soll.get(id) ?? null;
+  const bad = id !== 0 && isOver(total, soll);
+  const disc = !!state.cats.get(id)?.disc;
+  const pl = prevLabelOf(data.prev_range);
+  const cur = r.months.length === 1 ? monthLong(r.months[0]) : "Zeitraum";
+  const diff = prev != null ? total - prev : null;
+  const chips = dash.period.categories.filter((c) => c.amount > 0)
+    .map((c) => `<button type="button" data-cat="${c.id}" class="${c.id === id ? "on" : ""}">${esc(c.name)}</button>`).join("");
   body.innerHTML = focusHead(`${esc(data.name)}: ${UI.money0(total)}`,
-    `${periodLabel()} · ${UI.equiv(total)}${soll != null ? ` · Soll ${UI.money0(soll)}${bad ? ` – <span class="sig-bad">⚠ ${UI.money0(total - soll)} drüber</span>` : " – im Rahmen"}` : ""}. Woraus sich die Kategorie zusammensetzt.`, bad, "kategorien") +
-    `<div class="focus-grid"><section class="focus-card"><h2>Zusammensetzung</h2><p>Unterkategorien und ihre größten Empfänger – die Breite entspricht dem Betrag</p>
-      <div class="flow" id="comp-flow"></div></section>
+    `${periodLabel()} gegen ${esc(pl)}${diff != null ? ` · <b class="${diff > 0 ? "out-tone" : "in-tone"}">${UI.signed(diff)}</b>` : ""}${soll != null ? ` · Plan bis heute ${UI.money0(soll)}${bad ? ` – <span class="sig-bad">⚠ ${UI.money0(total - soll)} drüber</span>` : " – im Rahmen"}` : ""}${disc ? ` <span class="tag-disc">steuerbar</span>` : ""}`, bad, "kategorien") +
+    `<div class="chips comp-chips" role="group" aria-label="Kategorie wählen">${chips}</div>
+    <div class="focus-grid"><section class="focus-card"><h2>Unterkategorien</h2><p>Fadenbreite = Betrag, gestrichelt = Breite in ${esc(pl)}</p>
+      <div class="flow" id="comp-flow"></div>
+      <div class="scroll-x"><table class="depth-table comp-table"><thead><tr><th>Unterkategorie</th><th class="num">${esc(cur)}</th><th class="num">${esc(pl)}</th><th class="num">Differenz</th><th class="num">Anteil</th></tr></thead><tbody>
+      ${data.children.map((c) => `<tr><td>${esc(c.name)}</td><td class="num">${money0(c.amount)}</td><td class="num">${money0(c.prev)}</td>
+        <td class="num ${c.amount > c.prev ? "out-tone" : c.amount < c.prev ? "in-tone" : ""}">${UI.signed(eurOf(c.amount - c.prev))}</td><td class="num">${UI.pct((c.amount / (data.amount || 1)) * 100, 0)}</td></tr>`).join("")}</tbody></table></div></section>
       <aside class="focus-card compare">
-        ${data.children.map((c) => cmpRow(esc(c.name), UI.money0(eurOf(c.amount)), `${UI.pct((c.amount / (data.amount || 1)) * 100, 0)} der Kategorie · ${UI.equiv(eurOf(c.amount))}`)).join("") || cmpRow("Keine Ausgaben", "–")}
+        ${cmpRow(esc(cur), UI.money0(total), UI.equiv(total), bad)}
+        ${prev != null ? cmpRow(esc(pl), UI.money0(prev), diff != null ? `${UI.signed(diff)} · ${prev ? UI.signed((diff / prev) * 100, (x) => UI.pct(x, 0)) : "neu"}` : "") : ""}
+        ${soll != null ? cmpRow("Plan bis heute", UI.money0(soll), `${UI.pct(plan.progress * 100, 0)} des Zeitraums${state.cats.get(id)?.fixed ? " · Fixkosten voll" : ""}`) : ""}
+        ${data.children.filter((c) => c.partners.length).slice(0, 3).map((c) => cmpRow(`Größte bei ${esc(c.name)}`, esc(c.partners[0].name.length > 26 ? `${c.partners[0].name.slice(0, 25)}…` : c.partners[0].name), money0(c.partners[0].amount))).join("")}
         ${depthButton}</aside></div>`;
   wireDepth(body, "zusammensetzung");
-  const nodes = [{ id: "cat", name: data.name, value: total, col: 0, cls: bad ? "bad" : "" }], links = [];
-  data.children.forEach((c, i) => {
-    nodes.push({ id: `s${i}`, name: c.name, value: eurOf(c.amount), col: 1 });
-    links.push({ from: "cat", to: `s${i}`, value: eurOf(c.amount), cls: bad ? "bad" : "" });
-    c.partners.forEach((p, j) => {
-      nodes.push({ id: `p${i}_${j}`, name: p.name.length > 30 ? `${p.name.slice(0, 29)}…` : p.name, value: eurOf(p.amount), col: 2, cls: p.rest ? "rest" : "" });
-      links.push({ from: `s${i}`, to: `p${i}_${j}`, value: eurOf(p.amount), cls: p.rest ? "rest" : "" });
-    });
-  });
+  $$(".comp-chips button", body).forEach((b) => (b.onclick = () => { dash.flowCat = +b.dataset.cat; focusComposition(body); }));
   if (data.children.length) {
-    Flow.render($("#comp-flow", body), { nodes, links }, {
-      label: `Zusammensetzung ${data.name}`, format: (v) => UI.money0(v),
-      height: Math.min(620, Math.max(320, nodes.filter((n) => n.col === 2).length * 40 + 40)),
-      detail: (x, type, from, to) => type === "node" ? `<b>${esc(x.name)}</b> · ${UI.money0(x.value)}<br><span class="muted">${UI.equiv(x.value)}</span>`
-        : `${esc(from.name)} → <b>${esc(to.name)}</b><br>${UI.money0(x.value)}`,
-    });
+    Flow.branch($("#comp-flow", body), {
+      source: { name: data.name, value: total, prev },
+      children: data.children.map((c) => ({ name: c.name, value: eurOf(c.amount), prev: data.prev != null ? eurOf(c.prev) : null, disc })),
+    }, { format: (v) => UI.money0(v), prevLabel: pl, label: `${data.name}: Unterkategorien gegen ${pl}` });
+  } else {
+    $("#comp-flow", body).innerHTML = `<p class="empty-note">Keine Ausgaben in diesem oder dem Vergleichszeitraum.</p>`;
   }
 }
 function depthComposition(body) {
   disposeCharts(3);
   const data = dash.composition;
-  const rows = data.children.flatMap((c) => [`<tr><td><b>${esc(c.name)}</b></td><td class="num"><b>${money(c.amount)}</b></td><td class="num">${UI.pct((c.amount / (data.amount || 1)) * 100)}</td><td class="num equiv">${UI.equiv(eurOf(c.amount))}</td></tr>`,
-    ...c.partners.map((p) => `<tr class="child"><td>${esc(p.name)}</td><td class="num">${money(p.amount)}</td><td class="num">${UI.pct((p.amount / (data.amount || 1)) * 100)}</td><td class="num equiv">${UI.equiv(eurOf(p.amount))}</td></tr>`)]);
-  body.innerHTML = focusHead(`${esc(data.name)} – exakte Zahlen`, `${periodLabel()}`, false, "kategorien") +
-    `<div class="depth-grid"><section class="focus-card scroll-x"><table class="depth-table"><thead><tr><th>Unterkategorie / Empfänger</th><th class="num">Betrag</th><th class="num">Anteil</th><th class="num">Alltagsäquivalent</th></tr></thead><tbody>${rows.join("")}</tbody></table></section>
+  const pl = prevLabelOf(data.prev_range);
+  const rows = data.children.flatMap((c) => [`<tr><td><b>${esc(c.name)}</b></td><td class="num"><b>${money(c.amount)}</b></td><td class="num">${money(c.prev)}</td><td class="num">${UI.signed(eurOf(c.amount - c.prev), (v) => money(v * 100))}</td><td class="num">${UI.pct((c.amount / (data.amount || 1)) * 100)}</td><td class="num equiv">${UI.equiv(eurOf(c.amount))}</td></tr>`,
+    ...c.partners.map((p) => `<tr class="child"><td>${esc(p.name)}</td><td class="num">${money(p.amount)}</td><td></td><td></td><td class="num">${UI.pct((p.amount / (data.amount || 1)) * 100)}</td><td class="num equiv">${UI.equiv(eurOf(p.amount))}</td></tr>`)]);
+  body.innerHTML = focusHead(`${esc(data.name)} – exakte Zahlen`, `${periodLabel()} gegen ${esc(pl)}`, false, "kategorien") +
+    `<div class="depth-grid"><section class="focus-card scroll-x"><table class="depth-table"><thead><tr><th>Unterkategorie / Empfänger</th><th class="num">Betrag</th><th class="num">${esc(pl)}</th><th class="num">Differenz</th><th class="num">Anteil</th><th class="num">Alltagsäquivalent</th></tr></thead><tbody>${rows.join("")}</tbody></table></section>
      <aside class="focus-card form-grid"><button type="button" id="comp-tx">Alle Umsätze dieser Kategorie →</button></aside></div>`;
   $("#comp-tx", body).onclick = () => {
     state.returnTo = { key: "zusammensetzung", level: 3 };
@@ -1091,11 +1176,13 @@ let rulesCache = [];
 async function renderCategoriesView() {
   await loadCategories();
   rulesCache = await api("GET", "/api/rules");
+  loadPlan();
   const parents = state.categories.filter((c) => !c.parent_id);
   const row = (c, child) => `
     <div class="cat-row${child ? " child" : ""}" data-id="${c.id}">
       <span class="name">${esc(c.name)}</span>
       ${c.fixed ? `<span class="kind-tag">Fixkosten</span>` : ""}
+      ${c.disc && !child ? `<span class="tag-disc">steuerbar</span>` : ""}
       ${!child ? `<span class="kind-tag">${KIND_LABEL[c.kind]}</span>` : ""}
       ${c.budget ? `<span class="meta">Budget ${money0(c.budget)}</span>` : ""}
       <span class="meta">${c.tx_count} Buchungen · ${c.rule_count} Regeln</span>
@@ -1114,6 +1201,115 @@ async function renderCategoriesView() {
     </div>`;
   }).join("") || `<p class="empty-note">Noch keine Regeln.</p>`;
   $$("#rule-list .rule").forEach((el) => (el.onclick = () => openRuleDialog(rulesCache.find((r) => r.id === +el.dataset.id))));
+}
+
+// ------------------------------------------------------------------ Monatsplan: Sparziel und Budgets
+// Ein Gesamtziel (Sparquote); Ausgabenrahmen = Ø Einkommen × (1 − Ziel). Nicht gesperrte Budgets bewegen sich im Verhältnis.
+const plan = { m: null, inc: 0, goal: 20, budgets: new Map(), dirty: new Set(), goalDirty: false, timer: null };
+const planCats = () => state.categories.filter((c) => !c.parent_id && c.kind === "expense");
+const planFrame = (goal = plan.goal) => plan.inc * (1 - goal / 100);
+const planSum = (ids) => ids.reduce((s, id) => s + (plan.budgets.get(id) || 0), 0);
+
+async function loadPlan() {
+  plan.m = await UI.loadMeasures();
+  plan.inc = eurOf(plan.m?.avg_income);
+  plan.goal = plan.m?.targets?.savings_rate ?? 20;
+  plan.budgets = new Map(planCats().map((c) => [c.id, eurOf(c.budget || plan.m?.category_avg?.[String(c.id)])]));
+  plan.dirty.clear();
+  plan.goalDirty = false;
+  renderPlan();
+}
+
+function renderPlan() {
+  const cats = planCats().sort((a, b) => (plan.budgets.get(b.id) || 0) - (plan.budgets.get(a.id) || 0));
+  const frame = planFrame();
+  const sum = planSum(cats.map((c) => c.id));
+  const goalAmt = plan.inc * (plan.goal / 100);
+  $("#plan-goal").value = plan.goal;
+  $("#plan-goal-v").textContent = plan.inc ? `${plan.goal} % = ${UI.money0(goalAmt)}` : `${plan.goal} %`;
+  $("#plan-frame").textContent = plan.inc ? UI.money0(frame) : "–";
+  const gap = frame - sum;
+  $("#plan-frame-s").innerHTML = !plan.inc ? "Noch kein Einkommen in den letzten Monaten erkannt."
+    : `Ø Einkommen ${UI.money0(plan.inc)} · verteilt ${UI.money0(sum)}${Math.abs(gap) >= 5 ? ` · <span class="${gap < 0 ? "sig-bad" : ""}">${gap < 0 ? `${UI.money0(-gap)} über dem Rahmen` : `${UI.money0(gap)} frei`}</span> <button type="button" id="plan-fit">Auf Rahmen verteilen</button>` : " ✓"}`;
+  const max = Math.max(50, Math.ceil(Math.max(frame, ...cats.map((c) => (plan.budgets.get(c.id) || 0) * 1.5)) / 50) * 50);
+  $("#plan-table").innerHTML = `<thead><tr><th>Kategorie</th><th>Budget pro Monat</th><th class="num">€</th><th class="num">Ø 6 Monate</th><th class="num">Anteil</th><th title="Gesperrte Budgets bleiben beim Verschieben stehen">gesperrt</th><th title="Ausgaben, die du direkt beeinflussen kannst">steuerbar</th></tr></thead><tbody>
+    ${cats.map((c) => {
+      const b = plan.budgets.get(c.id) || 0;
+      const avg = plan.m?.category_avg?.[String(c.id)];
+      return `<tr><td>${esc(c.name)}${c.fixed ? ` <span class="kind-tag">Fixkosten</span>` : ""}${!c.budget && !plan.dirty.has(c.id) ? ` <span class="muted" title="Noch kein Budget gesetzt – Startwert ist der Durchschnitt">(Ø)</span>` : ""}</td>
+      <td><input type="range" data-budget="${c.id}" min="0" max="${max}" step="5" value="${Math.round(b)}" ${c.locked ? "disabled" : ""} aria-label="Budget ${esc(c.name)}"></td>
+      <td class="num">${UI.money0(b)}</td><td class="num muted">${avg ? money0(avg) : "–"}</td>
+      <td class="num">${frame > 0 ? UI.pct((b / frame) * 100, 0) : "–"}</td>
+      <td><input type="checkbox" data-lock="${c.id}" ${c.locked ? "checked" : ""} aria-label="${esc(c.name)} sperren"></td>
+      <td><input type="checkbox" data-disc="${c.id}" ${c.disc ? "checked" : ""} aria-label="${esc(c.name)} steuerbar"></td></tr>`;
+    }).join("") || `<tr><td colspan="7" class="empty-note">Noch keine Ausgaben-Kategorien.</td></tr>`}</tbody>`;
+  $$("#plan-table [data-budget]").forEach((r) => {
+    r.oninput = () => { r.closest("tr").children[2].textContent = UI.money0(+r.value); };
+    r.onchange = () => setPlanBudget(+r.dataset.budget, +r.value);
+  });
+  $$("#plan-table [data-lock]").forEach((x) => (x.onchange = () => saveCategoryFlag(+x.dataset.lock, { locked: x.checked })));
+  $$("#plan-table [data-disc]").forEach((x) => (x.onchange = () => saveCategoryFlag(+x.dataset.disc, { disc: x.checked })));
+  const fit = $("#plan-fit");
+  if (fit) fit.onclick = () => {
+    const free = planCats().filter((c) => !c.locked).map((c) => c.id);
+    scalePlan(free, (planFrame() - planSum(planCats().filter((c) => c.locked).map((c) => c.id))) / Math.max(1, planSum(free)));
+  };
+}
+
+function scalePlan(ids, f) {
+  for (const id of ids) { plan.budgets.set(id, Math.max(0, (plan.budgets.get(id) || 0) * f)); plan.dirty.add(id); }
+  renderPlan();
+  queuePlanSave();
+}
+/** Sparziel verschieben: nicht gesperrte Budgets skalieren so, dass der Abstand zum Rahmen im Verhältnis bleibt. */
+function setPlanGoal(pct) {
+  const cats = planCats(), free = cats.filter((c) => !c.locked).map((c) => c.id);
+  const lockedSum = planSum(cats.filter((c) => c.locked).map((c) => c.id));
+  const f = (planFrame(pct) - lockedSum) / Math.max(1, planFrame() - lockedSum);
+  plan.goal = pct;
+  plan.goalDirty = true;
+  scalePlan(free, Math.max(0, f));
+}
+/** Ein Budget verschieben: die übrigen nicht gesperrten gleichen es im Verhältnis aus. */
+function setPlanBudget(id, value) {
+  const free = planCats().filter((c) => c.id !== id && !c.locked).map((c) => c.id);
+  const pool = planSum(free), delta = value - (plan.budgets.get(id) || 0);
+  plan.budgets.set(id, value);
+  plan.dirty.add(id);
+  if (pool > 0) for (const k of free) { plan.budgets.set(k, Math.max(0, plan.budgets.get(k) - (delta * plan.budgets.get(k)) / pool)); plan.dirty.add(k); }
+  renderPlan();
+  queuePlanSave();
+}
+function queuePlanSave() {
+  clearTimeout(plan.timer);
+  $("#plan-saved").textContent = "…";
+  plan.timer = setTimeout(savePlan, 700);
+}
+async function savePlan() {
+  try {
+    const ids = [...plan.dirty];
+    plan.dirty.clear();
+    await Promise.all(ids.map((id) => api("PUT", `/api/categories/${id}`, { budget: Math.round(plan.budgets.get(id) || 0) })));
+    if (plan.goalDirty) {
+      plan.goalDirty = false;
+      await api("PUT", "/api/depot/settings", { targets: { ...(plan.m?.targets || {}), savings_rate: plan.goal } });
+    }
+    await loadCategories();
+    $("#plan-saved").textContent = "✓ gespeichert";
+  } catch (e) {
+    $("#plan-saved").textContent = "";
+    toast(`Monatsplan nicht gespeichert: ${e.message}`, { error: true });
+  }
+}
+async function saveCategoryFlag(id, body) {
+  try {
+    await api("PUT", `/api/categories/${id}`, body);
+    await loadCategories();
+    renderPlan();
+    $("#plan-saved").textContent = "✓ gespeichert";
+  } catch (e) {
+    toast(`Nicht gespeichert: ${e.message}`, { error: true });
+  }
 }
 
 let editingCategory = null;
@@ -1358,6 +1554,11 @@ function wire() {
 
   // Theme-Wechsel: Diagramme mit den Farben des neuen Modus neu zeichnen
   const retheme = () => { if (dash.m) { renderStart(); if (zoom.level > 1) zoom.refresh(); } };
+  $("#carry-toggle").checked = PREFS.carry;
+  $("#carry-toggle").onchange = (e) => { PREFS.carry = e.target.checked; retheme(); };
+  $("#pair-select").value = PREFS.pair;
+  $("#pair-select").onchange = (e) => { PREFS.pair = e.target.value; };   // Farben kommen aus CSS-Variablen
+  $("#plan-goal").oninput = (e) => setPlanGoal(+e.target.value);
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", retheme);
   new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-scheme"] });
 }
