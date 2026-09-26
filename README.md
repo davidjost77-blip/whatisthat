@@ -127,6 +127,15 @@ die Spaltennamen deiner Datei eintragen. Verfügbare Felder: `date`, `amount` (o
 Beim ersten Start wird ein Satz typischer deutscher Kategorien samt Regeln angelegt (Supermärkte, Tankstellen,
 Streaming, Versicherungen …) und für vier Kategorien ein Beispiel-Budget gesetzt. Alles davon kannst du ändern oder löschen.
 
+### Kreditkarten-Check: nichts doppelt, nichts verschwindet
+
+Nach jedem Import und Bankabruf (und beim Start) gleicht die App Kreditkartenabrechnungen vom Girokonto mit den
+importierten Kartenumsätzen ab. Findet sie die Gegenbuchung auf dem Kartenkonto („Ausgleich Kreditkarte“, gleicher
+Betrag, wenige Tage Abstand) oder Kartenumsätze im Abrechnungszeitraum, zählt die Abrechnung als **Umbuchung** – die
+Käufe stehen ja schon einzeln da. Ist die Karte nicht importiert, zählt die Abrechnung als **Ausgabe**, damit die
+Käufe nicht fehlen. Einzelkäufe mit Debitkarte („VISA Debit“, „Kartenzahlung“) sind keine Abrechnungen und bleiben
+Ausgaben. Das Ergebnis steht unter *Import › Kreditkarten-Check*; von Hand gesetzte Kategorien bleiben unangetastet.
+
 ### Monatsplan: ein Sparziel, Budgets im Verhältnis
 
 Oben unter *Kategorien & Regeln*: Du setzt **ein Sparziel pro Monat** (in % des Ø Einkommens der letzten 6 Monate).
@@ -172,7 +181,8 @@ Mit **‹ Monat zurück** und **Monat vor ›** springst du Gehaltsmonat für Ge
 2. **Geldfluss** im Zentrum: links die Einnahmen in der Einnahmenfarbe, rechts Kategorien, „Sparen & Depot“ und
    „Übrig“ in der Ausgabenfarbe; steuerbare Kategorien im tieferen Ton. Der See zeigt rein, raus und die Differenz und
    färbt sich nach dem erwarteten Ergebnis zum Monatsende: blau bei klarem Plus, je näher an null desto röter, rot im Minus. Der Schalter **Rücklagen** holt
-   das Plus aus dem Vergleichszeitraum dazu – es fließt links blau zu (ein Minus wird nicht gegengerechnet). Das **Farbpaar** (Blau/Rot,
+   das Plus aus dem Vormonat dazu (fließt links blau zu); geht in einem Monat mehr raus als reinkommt, gleicht
+   „Aus Erspartem“ links aus. Ohne Rücklagen zeigt der See das Minus offen. Das **Farbpaar** (Blau/Rot,
    Petrol/Koralle, Salbei/Terrakotta) wählst du im Geldfluss. Rot gewarnt wird nur ab 100 € Kategoriesumme. Der See verhält sich wie
    ein Wassertropfen: Fährst du mit der Maus übers Ufer oder klickst hinein, wabbelt er an dieser Stelle; neue
    Buchungen seit deinem letzten Blick stoßen ihn dort an, wo ihr Fluss mündet.

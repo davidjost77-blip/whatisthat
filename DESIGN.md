@@ -172,7 +172,9 @@ Entworfen und abgestimmt im Claude-Design-Canvas (Variante „Final“).
   Bei „Bewegung aus“ bzw. reduzierter Bewegung steht der See still.
 - **Rücklagen (Übertrag)** schaltbar: Was im Vergleichszeitraum nach Ausgaben und Sparen übrig blieb, fließt links
   als blauer Strom zu („Übertrag aus August“), unabhängig vom Farbpaar. Ein Minus im Vergleichszeitraum wird nicht
-  gegengerechnet (Stand 11: kein Abfluss „Ausgleich Minus“ mehr). Ohne vollständige Daten im Vergleichszeitraum kein Übertrag (mit Hinweis).
+  gegengerechnet (Stand 11: kein Abfluss „Ausgleich Minus“ mehr). Geht im Zeitraum mehr raus als reinkommt, gleicht
+  bei eingeschalteten Rücklagen links ein grauer Zufluss **„Aus Erspartem“** (vom Kontostand) aus; ausgeschaltet
+  zeigt der See das Minus offen (Stand 12). Ohne vollständige Daten im Vergleichszeitraum kein Übertrag (mit Hinweis).
 - **Warnung** (rot, ⚠ mit Betrag) nur, wenn eine Kategorie über ihrem anteiligen Plan liegt **und** mindestens 100 €
   ausmacht; kleinere Posten werden nie rot.
 - Überfahren hebt den Fluss hervor und zeigt Betrag, Äquivalent und Plan. Klick: Kategorie → Unterdashboard,

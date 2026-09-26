@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import db, importer, rules
+from . import db, importer, rules, transfers
 
 log = logging.getLogger("finanzen.ingest")
 
@@ -39,6 +39,7 @@ def import_bytes(conn, data, filename, profiles=(), account=None):
         (len(transactions), new, info["skipped"], import_id),
     )
     conn.commit()
+    check = transfers.reconcile(conn) if new else None      # Kreditkartenabrechnungen gegen Kartenumsätze prüfen
     dates = sorted(tx["date"] for tx in transactions)
     return {
         **info,
@@ -49,6 +50,7 @@ def import_bytes(conn, data, filename, profiles=(), account=None):
         "rows_duplicate": len(transactions) - new,
         "date_from": dates[0],
         "date_to": dates[-1],
+        "transfers": check,
     }
 
 

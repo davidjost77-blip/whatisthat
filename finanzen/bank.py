@@ -28,7 +28,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from . import db, importer, rules
+from . import db, importer, rules, transfers
 
 log = logging.getLogger("finanzen.bank")
 
@@ -425,6 +425,8 @@ def store(conn, session, account, raw):
     if not new:
         conn.execute("DELETE FROM imports WHERE id = ?", (import_id,))   # leere Abrufe nicht im Verlauf zeigen
     conn.commit()
+    if new:
+        transfers.reconcile(conn)                    # Kreditkartenabrechnungen gegen Kartenumsätze prüfen
     return new, dup
 
 

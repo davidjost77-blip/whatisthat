@@ -66,7 +66,7 @@
         <article class="card flow-card" data-card="flow">
           <header><div><h3>Geldfluss</h3><p id="flow-sub"></p></div>
             <div class="flow-controls">
-              <label class="switch" title="Plus aus dem Vergleichszeitraum einrechnen: fließt links blau zu"><input type="checkbox" id="carry-toggle" checked><span></span>Rücklagen</label>
+              <label class="switch" title="Rücklagen einrechnen: ein Plus aus dem Vormonat fließt links blau zu, ein Minus in diesem Monat wird „Aus Erspartem“ ausgeglichen"><input type="checkbox" id="carry-toggle" checked><span></span>Rücklagen</label>
               <label class="muted" style="font-size:12.5px">Farben <select id="pair-select" aria-label="Farbpaar Einnahmen/Ausgaben">
                 <option value="blau">Blau / Rot</option><option value="petrol">Petrol / Koralle</option><option value="salbei">Salbei / Terrakotta</option></select></label>
             </div></header>
@@ -214,7 +214,11 @@
           <p><a class="button" href="/api/export.csv">Alle Buchungen als CSV (Excel)</a></p>
         </div>
         <div class="panel">
-          <h2>Import-Verlauf</h2>
+          <h2>Kreditkarten-Check</h2>
+          <p class="muted">Läuft nach jedem Import und Bankabruf automatisch: Kreditkartenabrechnungen vom Girokonto werden mit den
+            importierten Kartenumsätzen abgeglichen, damit kein Kauf doppelt zählt – und keiner verschwindet, wenn die Karte nicht importiert ist.</p>
+          <div id="transfer-check"></div>
+          <h2 class="mt">Import-Verlauf</h2>
           <div id="import-history"></div>
         </div>
       </div>

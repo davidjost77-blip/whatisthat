@@ -851,7 +851,8 @@ function renderFlow(d) {
   f.sources.forEach((s, i) => nodes.push({ id: `in${i}`, name: s.name, value: eurOf(s.amount), col: 0, click: true, cat: s.id,
     ...(s.id === 0 ? { kind: "review", cls: "review", sub: "⚑ zuordnen" } : { kind: "income" }) }));
   if (plus) nodes.push({ id: "carry", name: `Übertrag aus ${carry.from}`, value: plus, col: 0, cls: "carry-pos", kind: "carry", sub: "Plus" });
-  if (net < 0) nodes.push({ id: "gap", name: "Fehlbetrag", value: -net, col: 0, cls: "rest", sub: "aus dem Kontostand" });
+  // Rücklagen an: Was fehlt, kommt aus dem Ersparten (Kontostand) und gleicht links aus. Aus: der See zeigt das Minus offen.
+  if (net < 0 && PREFS.carry) nodes.push({ id: "gap", name: "Aus Erspartem", value: -net, col: 0, cls: "rest", kind: "gap", sub: "vom Kontostand" });
   nodes.push({ id: "hub", name: "See", value: Math.max(inflow, outflow), col: 1 });
   for (const c of shown) {
     const soll = plan.soll.get(c.id) ?? null;
@@ -901,6 +902,7 @@ function renderFlow(d) {
     ],
     detail: (x) => {
       if (x.col === 1) return `<b>${net >= 0 ? "Im Plus" : "Im Minus"}</b> ${UI.signed(net)}${plan.vsPlan != null ? `<br>${planWord(plan.vsPlan)} (anteilig)<br><span class="muted">Plan bis heute ${UI.money0(plan.expected)} (${UI.pct(plan.progress * 100, 0)} des Zeitraums)</span>` : ""}`;
+      if (x.kind === "gap") return `<b>Aus Erspartem</b> · ${UI.money0(x.value)}<br><span class="muted">In diesem Zeitraum ging mehr raus als reinkam; die Differenz wurde vom vorhandenen Kontostand bezahlt. Ausblenden über „Rücklagen“.</span>`;
       if (x.kind === "carry") return `<b>${esc(x.name)}</b> · ${UI.money0(x.value)}<br><span class="muted">Was im Vergleichszeitraum nach Ausgaben und Sparen übrig blieb. Ausblenden über „Rücklagen“.</span>`;
       const soll = x.soll != null ? `<br>Plan bis heute ${UI.money0(x.soll)}${x.value > x.soll ? ` · <span class="${/\bbad\b/.test(x.cls) ? "sig-bad" : "muted"}">${UI.money0(x.value - x.soll)} drüber</span>` : ""}` : "";
       return `<b>${esc(x.name)}</b> · ${UI.money0(x.value)}${x.disc ? ` <span class="tag-disc">steuerbar</span>` : ""}<br><span class="muted">${UI.equiv(x.value)}</span>${soll}${x.click ? `<br><span class="muted">Klick: ${x.kind === "save" ? "zum Sparplan" : x.kind === "review" ? "jetzt zuordnen" : x.kind === "income" ? "Umsätze zeigen" : "Details & Vergleich"}</span>` : ""}`;
@@ -1492,6 +1494,7 @@ async function uploadFiles(files) {
 
 async function loadImportView() {
   window.BankUI?.render();
+  renderTransferCheck();
   $("#inbox-path").textContent = state.status?.inbox || "(Überwachung deaktiviert)";
   const rows = await api("GET", "/api/imports");
   $("#import-history").innerHTML = rows.map((r) => `
@@ -1506,6 +1509,22 @@ async function loadImportView() {
     await loadStatus();
     loadImportView();
   }));
+}
+
+/** Kreditkarten-Check: Ergebnis des automatischen Abgleichs, mit Sprung zu den betroffenen Buchungen. */
+async function renderTransferCheck() {
+  const box = $("#transfer-check");
+  let r;
+  try { r = await api("GET", "/api/transfers"); } catch { box.innerHTML = ""; return; }
+  const cards = r.card_accounts.length ? r.card_accounts.map(esc).join(", ") : null;
+  box.innerHTML = `<ul class="check-list">
+      <li>${cards ? `✓ Kartenkonto importiert: <b>${cards}</b>` : `<span class="muted">Kein Kreditkartenkonto importiert.</span>`}</li>
+      <li>${r.pairs + r.settled ? `✓ <b>${r.pairs + r.settled}</b> Abrechnung${r.pairs + r.settled === 1 ? "" : "en"} mit Kartenumsätzen abgeglichen – zählen als Umbuchung, nicht doppelt` : `Keine Kreditkartenabrechnung zum Abgleichen gefunden.`}</li>
+      ${r.unmatched.length ? `<li class="warn">⚠ <b>${r.unmatched.length}</b> Abrechnung${r.unmatched.length === 1 ? "" : "en"} ohne passende Kartenumsätze (Karte nicht importiert oder Zeitraum fehlt) – zählen als Ausgabe, damit die Käufe nicht fehlen.
+        Importierst du die Kartenumsätze dieses Zeitraums, werden sie automatisch zur Umbuchung.
+        <div class="check-rows">${r.unmatched.slice(-5).reverse().map((u) => `<button type="button" class="ghost" data-q="${esc(u.counterparty || "")}" data-date="${u.date}">${dateDe(u.date)} · ${esc(u.counterparty || "–")} · ${money(u.amount)}</button>`).join("")}</div></li>` : ""}
+    </ul>`;
+  $$("#transfer-check [data-q]").forEach((b) => (b.onclick = () => goToTransactions({ q: b.dataset.q, from: b.dataset.date, to: b.dataset.date })));
 }
 
 // ------------------------------------------------------------------ Verdrahtung

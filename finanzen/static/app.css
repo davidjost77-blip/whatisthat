@@ -1090,3 +1090,8 @@ body.review-open { overflow: hidden; }
 .lf .lf-bundle.pulse path { stroke-width: 1.1; }
 .lf .lf-lake { cursor: pointer; }
 .month-step button:disabled { opacity: .4; cursor: default; }
+/* Kreditkarten-Check (Import) */
+.check-list { list-style: none; padding: 0; margin: 8px 0 18px; display: grid; gap: 8px; font-size: 13.5px; }
+.check-list .warn { color: var(--text-primary); }
+.check-rows { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.check-rows button { font-size: 12.5px; padding: 4px 9px; }

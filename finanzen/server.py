@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import analytics, bank, cycles, db, depot, importer, ingest, review, rules
+from . import analytics, bank, cycles, db, depot, importer, ingest, review, rules, transfers
 
 log = logging.getLogger("finanzen.server")
 STATIC_DIR = Path(__file__).parent / "static"
@@ -48,6 +48,7 @@ class App:
         conn = db.connect(db_path)
         depot.init(conn)
         bank.init(conn)
+        self.transfer_report = transfers.reconcile(conn)    # bestehende Daten beim Start einmal abgleichen
         conn.close()
         self.routes = [
             ("GET", r"/api/status", self.status),
@@ -66,6 +67,7 @@ class App:
             ("DELETE", r"/api/rules/(\d+)", self.delete_rule),
             ("POST", r"/api/rules/preview", self.preview_rule),
             ("POST", r"/api/rules/apply", self.apply_rules),
+            ("GET", r"/api/transfers", self.transfer_check),
             ("POST", r"/api/import", self.import_file),
             ("GET", r"/api/imports", self.list_imports),
             ("DELETE", r"/api/imports/(\d+)", self.delete_import),
@@ -439,6 +441,16 @@ class App:
         matches = [dict(tx) for tx in conn.execute("SELECT * FROM transactions ORDER BY date DESC")
                    if rule.matches(tx)]
         return {"count": len(matches), "sum": sum(tx["amount"] for tx in matches), "items": matches[:15]}
+
+    def transfer_check(self, conn, req):
+        """Kreditkarten-Check: Abrechnungen gegen importierte Kartenumsätze (für die Import-Ansicht)."""
+        report = transfers.reconcile(conn)
+        own = transfers.own_accounts_category(conn)
+        report["card_accounts"] = sorted({r[0] for r in conn.execute("SELECT DISTINCT account FROM transactions")
+                                          if r[0] and transfers.CARD_ACCOUNT.search(r[0])})
+        report["settlements"] = conn.execute(
+            "SELECT COUNT(*) FROM transactions WHERE category_id = ? AND amount < 0", (own,)).fetchone()[0] if own else 0
+        return report
 
     def apply_rules(self, conn, req):
         body = req.json()

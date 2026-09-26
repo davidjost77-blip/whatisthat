@@ -90,4 +90,6 @@ def apply_rules(conn, only_uncategorized=False):
             conn.execute("UPDATE transactions SET category_id = ? WHERE id = ?", (new, tx["id"]))
             changed += 1
     conn.commit()
+    from . import transfers                     # Kreditkartenabrechnungen/Überträge danach abgleichen
+    transfers.reconcile(conn)
     return changed
