@@ -136,6 +136,13 @@
       <aside class="focus-card">
         <h2>Konto &amp; Abgleich</h2>
         <form id="account-form" class="form-grid">
+          <fieldset class="plan-set"><legend>Sparplan</legend>
+            <label>Rate pro Monat in € <input name="plan_rate" type="number" step="1" min="0"></label>
+            <label>Ausführungstag im Monat <input name="plan_day" type="number" step="1" min="1" max="28"></label>
+            <label class="switch"><input type="checkbox" name="plan_active"><span></span> Rate jeden Monat automatisch buchen</label>
+            <p class="hint">Am Ausführungstag (bzw. nächsten Handelstag) wird die Rate zum Schlusskurs gebucht. Die Stückzahl ist
+              geschätzt, bis du sie per Klick auf den Kauf mit der Abrechnung bestätigst.</p>
+          </fieldset>
           <label>Guthaben (Verrechnungskonto) in € <input name="cash" type="number" step="0.01" min="0"></label>
           <label>Kontoauszug vom <input name="snap_date" type="date"></label>
           <label>Depotwert laut Kontoauszug in € <input name="snap_portfolio" type="number" step="0.01" min="0"></label>

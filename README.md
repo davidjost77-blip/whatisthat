@@ -150,6 +150,11 @@ Plan: 250 € monatlich in den **Vanguard FTSE All-World (Acc)** (VWCE, IE00BK5B
 
 - **Depot heute**: Wert gegen Einzahlungen. Im Fokus Depotwert pro Handelstag, Kursverlauf (1 Jahr, 5 Jahre, seit
   Auflage) gegen deinen Ø Kaufkurs. In der Tiefe alle Käufe.
+- **Automatische Sparplan-Buchung**: Jeden Monat am Ausführungstag (bzw. am nächsten Handelstag) bucht die App die
+  Rate selbst, zum Schlusskurs dieses Tages. Ein Import von Kontoauszügen ist dafür nicht nötig. Die Stückzahl ist als
+  *geschätzt* markiert, bis du den Kauf per Klick mit der Abrechnung bestätigst. Rate, Ausführungstag und Pause stellst
+  du unter *Sparplan-Takt → Käufe* ein. Einmalkäufe verschieben nichts, eine von Hand eingetragene Rate wird nicht doppelt
+  gebucht, und der Regler unter *Was wäre wenn* ändert nur die Projektion, nie den echten Plan.
 - **Sparplan-Takt**: eine Perle pro Monat, gefüllt = Kauf erfasst. Farbig wird es, wenn eine fällige Rate fehlt oder
   der Kontoauszug nicht zu den erfassten Käufen passt. In der Tiefe Käufe, Guthaben und Kontoauszug.
 - **Ziel** (Standard 100.000 € in 20 Jahren, im Fokus änderbar): mittlerer Verlauf gegen das Ziel, Chance in x von 10

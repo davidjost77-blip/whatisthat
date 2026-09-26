@@ -359,7 +359,13 @@ class App:
 
     # ------------------------------------------------------------ Depot & Sparplan
     def get_depot(self, conn, req):
+        try:
+            created = depot.auto_execute(conn)
+        except Exception:  # eine fehlgeschlagene Automatik darf die Ansicht nie blockieren
+            log.exception("Automatischer Sparplan fehlgeschlagen")
+            created = []
         return {
+            "auto_created": created,
             "transactions": [dict(r) for r in conn.execute("SELECT * FROM depot_tx ORDER BY date, id")],
             "settings": depot.get_settings(conn),
             "catalog": depot.CATALOG,
@@ -397,7 +403,8 @@ class App:
         current = conn.execute("SELECT * FROM depot_tx WHERE id = ?", (tid,)).fetchone()
         if not current:
             raise ApiError("Kauf nicht gefunden.", HTTPStatus.NOT_FOUND)
-        conn.execute("UPDATE depot_tx SET date = ?, symbol = ?, shares = ?, amount = ?, note = ? WHERE id = ?",
+        # Bearbeiten = bestätigt: die Stückzahl gilt nicht mehr als geschätzt
+        conn.execute("UPDATE depot_tx SET date = ?, symbol = ?, shares = ?, amount = ?, note = ?, estimated = 0 WHERE id = ?",
                      self._depot_tx_values(req.json(), dict(current)) + (tid,))
         conn.commit()
         return dict(conn.execute("SELECT * FROM depot_tx WHERE id = ?", (tid,)).fetchone())

@@ -295,7 +295,7 @@ function renderBlick() {
       : rec && !rec.ok ? `⚠ Abgleich: ${money0(Math.abs(rec.diff))} ${rec.diff > 0 ? "fehlen" : "zu viel"}` : `Im Takt: ${r.done} von ${r.due || r.done} Raten`,
     cls: takBad ? "bad" : "",
     metaphor: pearlsHtml(r) + `<span class="pearls-legend">● erfasst · ○ offen${r.missing.length ? " · ◌ fehlt" : ""}</span>`,
-    facts: [["Soll", `${money0(state.settings.plan.rate)} am ${state.settings.plan.day}. jedes Monats`],
+    facts: [["Soll", `${money0(state.settings.plan.rate)} am ${state.settings.plan.day}.${state.settings.plan.active === false ? " · pausiert" : " · bucht automatisch"}`],
       ["Abgleich", rec ? (rec.ok ? "passt zum Kontoauszug" : `≈ ${num(2).format(Math.abs(rec.shares))} Anteile Differenz`) : "kein Kontoauszug erfasst"],
       ["Nächste Rate", dateDe(isoDate(firstPlanDate()))]],
   }));
@@ -491,12 +491,16 @@ function renderLedger(root) {
     const today = now ? t.shares * now : null;
     const diff = today !== null ? today - t.amount / 100 : null;
     return `<tr data-id="${t.id}"><td>${dateDe(t.date)}</td>
-      <td>${esc(catalogOf(t.symbol)?.short || t.symbol)}${t.note ? ` <small class="equiv">${esc(t.note)}</small>` : ""}</td>
+      <td>${esc(catalogOf(t.symbol)?.short || t.symbol)}${t.note ? ` <small class="equiv">${esc(t.note)}</small>` : ""}${t.estimated ? ` <span class="est-tag" title="Stückzahl geschätzt – mit der Abrechnung vergleichen und per Klick bestätigen">geschätzt</span>` : ""}</td>
       <td class="num">${num(t.shares % 1 ? 2 : 0).format(t.shares)}</td><td class="num">${money(t.amount / 100)}</td><td class="num">${money(price)}</td>
       <td class="num">${today !== null ? `${money(today)} <small class="${diff < 0 ? "sig-bad" : "equiv"}">${signed(diff)}</small>` : "–"}</td>
       <td class="num equiv">${UI.equiv(t.amount / 100)}</td></tr>`;
   }).join("") || `<tr><td colspan="7" class="muted">Noch keine Käufe erfasst.</td></tr>`;
   const f = $("#account-form", root);
+  const plan = state.settings.plan;
+  f.plan_rate.value = plan.rate;
+  f.plan_day.value = plan.day;
+  f.plan_active.checked = plan.active !== false;
   f.cash.value = ((state.settings.cash || 0) / 100).toFixed(2);
   f.snap_date.value = state.settings.snapshot?.date || "";
   f.snap_portfolio.value = state.settings.snapshot?.portfolio ? (state.settings.snapshot.portfolio / 100).toFixed(2) : "";
@@ -521,8 +525,9 @@ function wireLedger(root) {
     state.settings.cash = cents(f.cash.value) || 0;
     const portfolio = cents(f.snap_portfolio.value);
     state.settings.snapshot = { date: f.snap_date.value, portfolio, total: portfolio !== null ? portfolio + state.settings.cash : null };
+    state.settings.plan = { ...state.settings.plan, rate: +f.plan_rate.value || 0, day: Math.min(28, Math.max(1, +f.plan_day.value || 25)), active: f.plan_active.checked };
     try {
-      await api("PUT", "/api/depot/settings", { cash: state.settings.cash, snapshot: state.settings.snapshot });
+      await api("PUT", "/api/depot/settings", { cash: state.settings.cash, snapshot: state.settings.snapshot, plan: state.settings.plan });
       renderLedger(root);
       renderBlick();
       toast("Gespeichert");
@@ -977,7 +982,6 @@ function wirePlay(root) {
       $(`#out-${key}`, root).textContent = CONTROLS[key].fmt(input.value);
       fillRange(input);
       if (key === "ret") $$("#scenario-presets button", root).forEach((b) => b.classList.toggle("active", Math.abs(+b.dataset.ret - scen().ret) < 0.01));
-      if (key === "rate") { state.settings.plan.rate = +input.value; saveSettings(["scenario", "plan"]); }
       update();
     });
   }
@@ -1076,6 +1080,9 @@ const zoom = new UI.Zoom({
 // ------------------------------------------------------------------ Verdrahtung
 async function reloadDepot() {
   const d = await api("GET", "/api/depot");
+  for (const t of d.auto_created || []) {
+    toast(`Sparplan-Rate vom ${dateDe(t.date)} automatisch gebucht: ${num(4).format(t.shares)} Stück zu ${money(t.price)} (geschätzt)`);
+  }
   state.tx = d.transactions;
   state.settings = d.settings;
   state.catalog = d.catalog;

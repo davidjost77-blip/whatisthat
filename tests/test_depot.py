@@ -14,6 +14,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import sqlite3  # noqa: E402
+import time  # noqa: E402
+from datetime import date  # noqa: E402
 
 from finanzen import analytics, db, depot  # noqa: E402
 from finanzen.server import App, serve  # noqa: E402
@@ -47,13 +49,14 @@ class DepotTests(unittest.TestCase):
 
     def test_seed(self):
         rows = self.conn.execute("SELECT SUM(shares), SUM(amount) FROM depot_tx").fetchone()
-        self.assertAlmostEqual(rows[0], 5.47)
-        self.assertEqual(rows[1], 91669)
+        self.assertAlmostEqual(rows[0], 6.96)  # inkl. erstem Kauf am 25.06.2026
+        self.assertEqual(rows[1], 116669)
         settings = depot.get_settings(self.conn)
         self.assertEqual(settings["cash"], 3331)
         self.assertEqual(settings["plan"]["rate"], 250)
         depot.init(self.conn)  # zweiter Start legt nichts doppelt an
-        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM depot_tx").fetchone()[0], 4)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM depot_tx").fetchone()[0], 5)
+        self.assertEqual(self.conn.execute("SELECT estimated FROM depot_tx WHERE date = '2026-06-25'").fetchone()[0], 1)
 
     def test_settings(self):
         saved = depot.save_settings(self.conn, {"extras": [{"symbol": "EUNL.DE"}]})
@@ -93,6 +96,98 @@ class DepotTests(unittest.TestCase):
         self.assertAlmostEqual(st["cagr"], (1.01 ** 12 - 1) * 100, places=1)
         self.assertAlmostEqual(st["vol"], 0, places=3)
         self.assertIsNone(depot.stats(points[:5]))
+
+
+def daily_chart(start, days, price=100.0, weekends=False):
+    """Kursverlauf mit Handelstagen ab ``start`` (ISO), Kurs steigt je Tag um 1 €."""
+    from datetime import date as _d, timedelta
+    d0 = _d.fromisoformat(start)
+    stamps, closes = [], []
+    for i in range(days):
+        d = d0 + timedelta(days=i)
+        if not weekends and d.weekday() >= 5:
+            continue
+        stamps.append(int(time.mktime((d.year, d.month, d.day, 12, 0, 0, 0, 0, 0))) - 7200)
+        closes.append(price + i)
+    return {"chart": {"result": [{"meta": {"symbol": "VWCE.DE", "currency": "EUR", "regularMarketPrice": closes[-1],
+                                           "gmtoffset": 7200}, "timestamp": stamps,
+                                  "indicators": {"adjclose": [{"adjclose": closes}]}}]}}
+
+
+class AutoPlanTests(unittest.TestCase):
+    """Automatische Sparplan-Buchung ohne Import."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        path = str(Path(self.tmp.name) / "t.db")
+        db.init_db(path)
+        self.conn = db.connect(path)
+        depot.init(self.conn)
+        self.orig_fetch = depot.fetch_json
+
+    def tearDown(self):
+        depot.fetch_json = self.orig_fetch
+        self.conn.close()
+        self.tmp.cleanup()
+
+    def plan_tx(self):
+        return [dict(r) for r in self.conn.execute("SELECT * FROM depot_tx WHERE note = 'Sparplan (automatisch)' ORDER BY date")]
+
+    def test_books_due_months_on_next_trading_day(self):
+        depot.fetch_json = lambda url: daily_chart("2026-09-20", 110)
+        created = depot.auto_execute(self.conn, today=date(2026, 12, 1))
+        self.assertEqual([c["date"] for c in created], ["2026-10-26", "2026-11-25"])  # 25.10.2026 ist ein Sonntag
+        tx = self.plan_tx()
+        self.assertEqual([t["amount"] for t in tx], [25000, 25000])
+        self.assertTrue(all(t["estimated"] == 1 for t in tx))
+        self.assertAlmostEqual(tx[0]["shares"], round(250 / (100 + 36), 4))
+        # zweiter Aufruf bucht nichts doppelt
+        self.assertEqual(depot.auto_execute(self.conn, today=date(2026, 12, 1)), [])
+        self.assertEqual(depot.get_settings(self.conn)["plan"]["last_executed"], "2026-11")
+
+    def test_one_off_and_manual_rate(self):
+        depot.fetch_json = lambda url: daily_chart("2026-09-20", 110)
+        depot.auto_execute(self.conn, today=date(2026, 9, 26))  # erster Start der App: merkt sich September
+        # Einmalkauf im Oktober verhindert die Oktober-Rate nicht, eine von Hand eingetragene November-Rate schon
+        self.conn.execute("INSERT INTO depot_tx (date, symbol, shares, amount) VALUES ('2026-10-10', 'VWCE.DE', 3, 50000)")
+        self.conn.execute("INSERT INTO depot_tx (date, symbol, shares, amount) VALUES ('2026-11-25', 'VWCE.DE', 1.6, 25000)")
+        created = depot.auto_execute(self.conn, today=date(2026, 12, 1))
+        self.assertEqual([c["date"] for c in created], ["2026-10-26"])
+
+    def test_paused_plan_and_offline(self):
+        depot.save_settings(self.conn, {"plan": {**depot.get_settings(self.conn)["plan"], "active": False}})
+        self.assertEqual(depot.auto_execute(self.conn, today=date(2026, 12, 1)), [])
+        depot.save_settings(self.conn, {"plan": {**depot.get_settings(self.conn)["plan"], "active": True}})
+
+        def offline(url):
+            raise OSError("offline")
+        depot.fetch_json = offline
+        created = depot.auto_execute(self.conn, today=date(2026, 10, 30))
+        self.assertEqual(len(created), 1)
+        self.assertAlmostEqual(created[0]["price"], round(250 / 1.46, 2))  # letzter Kaufkurs
+
+    def test_rate_change_applies_to_future_months(self):
+        depot.fetch_json = lambda url: daily_chart("2026-09-20", 110)
+        depot.save_settings(self.conn, {"plan": {**depot.get_settings(self.conn)["plan"], "rate": 300}})
+        created = depot.auto_execute(self.conn, today=date(2026, 10, 30))
+        self.assertEqual(created[0]["amount"], 30000)
+
+
+class FixTests(unittest.TestCase):
+    def test_existing_database_gets_first_purchase_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            conn = db.connect(str(Path(tmp) / "alt.db"))
+            conn.executescript("""CREATE TABLE depot_tx (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, symbol TEXT NOT NULL,
+                shares REAL NOT NULL, amount INTEGER NOT NULL, note TEXT NOT NULL DEFAULT '');
+                CREATE TABLE depot_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);""")
+            conn.execute("INSERT INTO depot_settings VALUES ('cash', '3331')")
+            conn.executemany("INSERT INTO depot_tx (date, symbol, shares, amount, note) VALUES (?, ?, ?, ?, ?)", depot.SEED_TX[1:])
+            conn.commit()
+            depot.init(conn)
+            depot.init(conn)
+            june = conn.execute("SELECT shares, amount, estimated FROM depot_tx WHERE date = '2026-06-25'").fetchall()
+            self.assertEqual([tuple(r) for r in june], [(1.49, 25000, 1)])
+            conn.close()
 
 
 class MeasuresTests(unittest.TestCase):
@@ -183,7 +278,7 @@ class DepotApiTests(unittest.TestCase):
     def test_depot_flow(self):
         status, d = self.call("GET", "/api/depot")
         self.assertEqual(status, 200)
-        self.assertEqual(len(d["transactions"]), 4)
+        self.assertEqual(len(d["transactions"]), 5)
         self.assertTrue(any(c["symbol"] == "VWCE.DE" for c in d["catalog"]))
         status, tx = self.call("POST", "/api/depot/tx", {"date": "2026-10-27", "symbol": "vwce.de", "shares": "1,45", "amount": "250"})
         self.assertEqual((status, tx["symbol"], tx["shares"], tx["amount"]), (200, "VWCE.DE", 1.45, 25000))
