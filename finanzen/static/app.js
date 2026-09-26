@@ -745,7 +745,8 @@ function expectedNet(d, net, saving, plan = planStatus(d)) {
 }
 /** „429 € unter Plan“ / „37 € über Plan“ – Vorzeichen sind hier missverständlich. */
 const planWord = (v) => `${UI.money0(Math.abs(v))} ${v >= 0 ? "unter" : "über"} Plan`;
-const carryOf = (d) => { const c = carryInfo(d); return PREFS.carry && c?.complete ? c : null; };
+// Rücklagen = nur das Plus aus dem Vergleichszeitraum fließt links zu; ein Minus wird nicht gegengerechnet
+const carryOf = (d) => { const c = carryInfo(d); return PREFS.carry && c?.complete && c.value > 0 ? c : null; };
 
 /** Anteiliger Plan im Zeitraum: Fixkosten zählen ab Monatsbeginn voll, der Rest gleichmäßig über die Tage. */
 function planStatus(d) {
@@ -823,8 +824,8 @@ function renderFlow(d) {
   const expense = cats.reduce((s, c) => s + eurOf(c.amount), 0);
   const carryAll = carryInfo(d);
   const carry = carryOf(d);
-  const plus = carry && carry.value > 0 ? carry.value : 0, minus = carry && carry.value < 0 ? -carry.value : 0;
-  const inflow = income + plus, outflow = expense + saving + minus;
+  const plus = carry ? carry.value : 0;
+  const inflow = income + plus, outflow = expense + saving;
   const net = inflow - outflow;
   const plan = planStatus(d);
   const base = income || outflow || 1;
@@ -845,7 +846,6 @@ function renderFlow(d) {
   }
   if (rest.length) nodes.push({ id: "other", name: `${rest.length} weitere`, value: rest.reduce((s, c) => s + eurOf(c.amount), 0), col: 2, cls: "rest" });
   if (saving > 0) nodes.push({ id: "save", name: savingLabel, value: saving, col: 2, cls: "save", click: true, kind: "save", sub: UI.pct((saving / base) * 100, 0) });
-  if (minus) nodes.push({ id: "carry", name: `Ausgleich Minus aus ${carry.from}`, value: minus, col: 2, cls: "carry-neg", kind: "carry", sub: "Minus" });
   if (net > 0) nodes.push({ id: "left", name: "Übrig", value: net, col: 2, cls: "rest", sub: UI.equiv(net) });
 
   // Seefarbe nach dem erwarteten Ergebnis zum Ende des Zeitraums (inkl. Übertrag, wenn eingeschaltet):
@@ -862,12 +862,13 @@ function renderFlow(d) {
   };
   const carryNote = !PREFS.carry ? " · Rücklagen ausgeblendet"
     : carry ? ` · Übertrag aus ${carry.from} ${UI.signed(carry.value)}`
+    : carryAll?.complete && carryAll.value <= 0 ? ` · kein Übertrag (${carryAll.from} ohne Plus)`
     : carryAll && !carryAll.complete ? " · kein Übertrag: Vergleichszeitraum nicht vollständig in den Daten" : "";
   $("#flow-sub").textContent = `${periodLabel()}${carryNote}. Kategorie anklicken für Details und Vergleich.`;
   $("#flow-legend").innerHTML = `<span><i style="background:var(--flow-in)"></i>Einnahmen</span>
     <span><i style="background:color-mix(in srgb, var(--flow-out) 60%, var(--mix-base))"></i>Ausgaben</span>
     <span><i style="background:var(--flow-out)"></i>steuerbar</span>
-    ${carry ? `<span><i style="background:${carry.value >= 0 ? "var(--carry-pos)" : "var(--carry-neg)"}"></i>Übertrag</span>` : ""}
+    ${carry ? `<span><i style="background:var(--carry-pos)"></i>Übertrag</span>` : ""}
     <span class="muted">See: ${plan.progress < 1 ? "erwartetes Ergebnis zum Ende" : "Ergebnis"}${carry ? " inkl. Übertrag" : ""} – Einnahmenfarbe = im Plus, je näher an null desto röter, Ausgabenfarbe = im Minus</span>`;
   const lakeCtl = Flow.lake($("#flow"), { nodes }, {
     label: "Geldfluss: Einnahmen links münden in den See, Ausgaben und Sparen fließen rechts ab",
@@ -882,7 +883,7 @@ function renderFlow(d) {
     ],
     detail: (x) => {
       if (x.col === 1) return `<b>${net >= 0 ? "Im Plus" : "Im Minus"}</b> ${UI.signed(net)}${plan.vsPlan != null ? `<br>${planWord(plan.vsPlan)} (anteilig)<br><span class="muted">Plan bis heute ${UI.money0(plan.expected)} (${UI.pct(plan.progress * 100, 0)} des Zeitraums)</span>` : ""}`;
-      if (x.kind === "carry") return `<b>${esc(x.name)}</b> · ${UI.money0(x.value)}<br><span class="muted">Was im Vergleichszeitraum nach Ausgaben und Sparen ${x.cls === "carry-pos" ? "übrig blieb" : "fehlte"}. Ausblenden über „Rücklagen“.</span>`;
+      if (x.kind === "carry") return `<b>${esc(x.name)}</b> · ${UI.money0(x.value)}<br><span class="muted">Was im Vergleichszeitraum nach Ausgaben und Sparen übrig blieb. Ausblenden über „Rücklagen“.</span>`;
       const soll = x.soll != null ? `<br>Plan bis heute ${UI.money0(x.soll)}${x.value > x.soll ? ` · <span class="${/\bbad\b/.test(x.cls) ? "sig-bad" : "muted"}">${UI.money0(x.value - x.soll)} drüber</span>` : ""}` : "";
       return `<b>${esc(x.name)}</b> · ${UI.money0(x.value)}${x.disc ? ` <span class="tag-disc">steuerbar</span>` : ""}<br><span class="muted">${UI.equiv(x.value)}</span>${soll}${x.click ? `<br><span class="muted">Klick: ${x.kind === "save" ? "zum Sparplan" : x.kind === "review" ? "jetzt zuordnen" : x.kind === "income" ? "Umsätze zeigen" : "Details & Vergleich"}</span>` : ""}`;
     },

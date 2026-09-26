@@ -170,9 +170,9 @@ Entworfen und abgestimmt im Claude-Design-Canvas (Variante „Final“).
 - **Feine Uferlinie**: eine scharfe, blasse Linie (0,6 px) am Ufer reagiert auf jeden einzelnen Faden – wo er ankommt,
   wölbt sie sich um ~0,5 px, im eigenen Takt des Fadens. Ohne Hineinzoomen kaum zu sehen. Kein Glanzlicht.
   Bei „Bewegung aus“ bzw. reduzierter Bewegung steht der See still.
-- **Rücklagen (Übertrag)** schaltbar: Was im Vergleichszeitraum nach Ausgaben und Sparen übrig blieb, fließt als
-  blauer Strom zu („Übertrag aus August“); ein Minus fließt als roter Strom ab („Ausgleich Minus aus August“) – immer
-  blau/rot, unabhängig vom Farbpaar. Ohne vollständige Daten im Vergleichszeitraum kein Übertrag (mit Hinweis).
+- **Rücklagen (Übertrag)** schaltbar: Was im Vergleichszeitraum nach Ausgaben und Sparen übrig blieb, fließt links
+  als blauer Strom zu („Übertrag aus August“), unabhängig vom Farbpaar. Ein Minus im Vergleichszeitraum wird nicht
+  gegengerechnet (Stand 11: kein Abfluss „Ausgleich Minus“ mehr). Ohne vollständige Daten im Vergleichszeitraum kein Übertrag (mit Hinweis).
 - **Warnung** (rot, ⚠ mit Betrag) nur, wenn eine Kategorie über ihrem anteiligen Plan liegt **und** mindestens 100 €
   ausmacht; kleinere Posten werden nie rot.
 - Überfahren hebt den Fluss hervor und zeigt Betrag, Äquivalent und Plan. Klick: Kategorie → Unterdashboard,

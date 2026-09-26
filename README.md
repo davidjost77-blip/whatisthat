@@ -171,7 +171,7 @@ Die Startseite zeigt alles auf einen Blick, geordnet nach Wichtigkeit, und folgt
 2. **Geldfluss** im Zentrum: links die Einnahmen in der Einnahmenfarbe, rechts Kategorien, „Sparen & Depot“ und
    „Übrig“ in der Ausgabenfarbe; steuerbare Kategorien im tieferen Ton. Der See zeigt rein, raus und die Differenz und
    färbt sich nach dem erwarteten Ergebnis zum Monatsende: blau bei klarem Plus, je näher an null desto röter, rot im Minus. Der Schalter **Rücklagen** holt
-   den Übertrag aus dem Vergleichszeitraum dazu – ein Plus fließt blau zu, ein Minus rot ab. Das **Farbpaar** (Blau/Rot,
+   das Plus aus dem Vergleichszeitraum dazu – es fließt links blau zu (ein Minus wird nicht gegengerechnet). Das **Farbpaar** (Blau/Rot,
    Petrol/Koralle, Salbei/Terrakotta) wählst du im Geldfluss. Rot gewarnt wird nur ab 100 € Kategoriesumme. Der See verhält sich wie
    ein Wassertropfen: Fährst du mit der Maus übers Ufer oder klickst hinein, wabbelt er an dieser Stelle; neue
    Buchungen seit deinem letzten Blick stoßen ihn dort an, wo ihr Fluss mündet.
