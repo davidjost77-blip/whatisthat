@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import analytics, db, importer, ingest, rules
+from . import analytics, db, depot, importer, ingest, rules
 
 log = logging.getLogger("finanzen.server")
 STATIC_DIR = Path(__file__).parent / "static"
@@ -43,6 +43,9 @@ class App:
         self.profiles_path = profiles_path
         self.watcher = None
         db.init_db(db_path)
+        conn = db.connect(db_path)
+        depot.init(conn)
+        conn.close()
         self.routes = [
             ("GET", r"/api/status", self.status),
             ("GET", r"/api/dashboard", self.dashboard),
@@ -64,6 +67,13 @@ class App:
             ("GET", r"/api/imports", self.list_imports),
             ("DELETE", r"/api/imports/(\d+)", self.delete_import),
             ("GET", r"/api/export\.csv", self.export_csv),
+            ("GET", r"/api/depot", self.get_depot),
+            ("PUT", r"/api/depot/settings", self.update_depot_settings),
+            ("POST", r"/api/depot/tx", self.create_depot_tx),
+            ("PUT", r"/api/depot/tx/(\d+)", self.update_depot_tx),
+            ("DELETE", r"/api/depot/tx/(\d+)", self.delete_depot_tx),
+            ("GET", r"/api/quotes/chart", self.quote_chart),
+            ("GET", r"/api/quotes/search", self.quote_search),
         ]
 
     # ------------------------------------------------------------------ Status
@@ -339,6 +349,77 @@ class App:
                              r["parent"] or r["cat"] or "", r["cat"] if r["parent"] else "", r["note"]])
         return RawResponse(out.getvalue().encode("utf-8-sig"), "text/csv; charset=utf-8",
                            {"Content-Disposition": 'attachment; filename="finanzen-export.csv"'})
+
+
+    # ------------------------------------------------------------ Depot & Sparplan
+    def get_depot(self, conn, req):
+        return {
+            "transactions": [dict(r) for r in conn.execute("SELECT * FROM depot_tx ORDER BY date, id")],
+            "settings": depot.get_settings(conn),
+            "catalog": depot.CATALOG,
+        }
+
+    def update_depot_settings(self, conn, req):
+        try:
+            return depot.save_settings(conn, req.json())
+        except ValueError as e:
+            raise ApiError(str(e))
+
+    def _depot_tx_values(self, body, current=None):
+        merged = {**(current or {}), **body}
+        date = str(merged.get("date", ""))
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+            raise ApiError("Datum bitte als JJJJ-MM-TT angeben.")
+        symbol = str(merged.get("symbol", "")).strip().upper()
+        if not symbol:
+            raise ApiError("Bitte ein Kürzel angeben.")
+        shares = float(str(merged.get("shares", 0)).replace(",", "."))
+        if shares <= 0:
+            raise ApiError("Stückzahl muss größer als 0 sein.")
+        amount = euro_to_cents(body["amount"]) if "amount" in body else (current or {}).get("amount")
+        if not amount or amount <= 0:
+            raise ApiError("Bitte einen Betrag angeben.")
+        return date, symbol, shares, amount, str(merged.get("note", ""))[:200]
+
+    def create_depot_tx(self, conn, req):
+        tid = conn.execute("INSERT INTO depot_tx (date, symbol, shares, amount, note) VALUES (?, ?, ?, ?, ?)",
+                           self._depot_tx_values(req.json())).lastrowid
+        conn.commit()
+        return dict(conn.execute("SELECT * FROM depot_tx WHERE id = ?", (tid,)).fetchone())
+
+    def update_depot_tx(self, conn, req, tid):
+        current = conn.execute("SELECT * FROM depot_tx WHERE id = ?", (tid,)).fetchone()
+        if not current:
+            raise ApiError("Kauf nicht gefunden.", HTTPStatus.NOT_FOUND)
+        conn.execute("UPDATE depot_tx SET date = ?, symbol = ?, shares = ?, amount = ?, note = ? WHERE id = ?",
+                     self._depot_tx_values(req.json(), dict(current)) + (tid,))
+        conn.commit()
+        return dict(conn.execute("SELECT * FROM depot_tx WHERE id = ?", (tid,)).fetchone())
+
+    def delete_depot_tx(self, conn, req, tid):
+        conn.execute("DELETE FROM depot_tx WHERE id = ?", (tid,))
+        conn.commit()
+        return {"deleted": tid}
+
+    def quote_chart(self, conn, req):
+        q = {k: v[0] for k, v in req.query.items()}
+        try:
+            data = depot.chart(conn, q.get("symbol", ""), q.get("range", "1y"), q.get("interval", "1d"),
+                               force=q.get("force") == "1")
+        except depot.QuoteError as e:
+            raise ApiError(str(e), HTTPStatus.BAD_GATEWAY)
+        if q.get("stats") == "1":
+            data["stats"] = depot.stats(data["points"])
+        return data
+
+    def quote_search(self, conn, req):
+        query = req.query.get("q", [""])[0].strip()
+        if len(query) < 2:
+            return []
+        try:
+            return depot.search(query)
+        except depot.QuoteError as e:
+            raise ApiError(str(e), HTTPStatus.BAD_GATEWAY)
 
 
 class RawResponse:

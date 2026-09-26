@@ -125,6 +125,32 @@ springt zu den passenden Umsätzen. Jede Karte hat eine **Tabellenansicht**, au�
 
 ![Dunkelmodus](docs/dashboard-dunkel.png)
 
+## Sparplan & ETF-Projektion
+
+Unter **Sparplan** (<http://localhost:8765/sparplan.html>) bildet die App deinen ETF-Sparplan ab. Vorbelegt ist der laufende
+Plan: 250 € monatlich in den **Vanguard FTSE All-World (Acc)** (VWCE, IE00BK5BQT80) mit den bisherigen Käufen.
+
+![Sparplan](docs/sparplan.png)
+
+- **Depot heute**: Wert mit dem aktuellen Kurs, Gewinn seit dem ersten Kauf, Tagesveränderung, Ø Kaufkurs, Guthaben.
+  Das Diagramm zeigt den Depotwert pro Handelstag gegen die Einzahlungen (Punkte = Käufe) und wahlweise den Kursverlauf
+  über 1 Jahr, 5 Jahre oder seit Auflage.
+- **Live-Kurse** kommen über den lokalen Server von Yahoo Finance (Xetra, verzögert) und werden in der Datenbank
+  zwischengespeichert. Der aktuelle Kurs wird jede Minute aktualisiert. Ohne Internet rechnet die App mit dem letzten
+  gespeicherten Stand bzw. dem letzten Kaufkurs; der Punkt in der Kopfzeile zeigt das an (grün = live, gelb = gespeichert).
+- **Zukunft gestalten**: Sparrate, Laufzeit, jährliche Erhöhung, Rendite, Schwankung, Kosten (TER), Inflation und
+  Sonderzahlungen per Regler. Die Projektion zeigt den mittleren Verlauf und die Bandbreite aus 600 simulierten
+  Börsenverläufen, alternativ die Aufteilung *Eingezahlt vs. Zinseszins* oder den Beitrag jedes ETFs. Dazu kommen drei
+  Szenarien (4 / 7 / 9 % p. a.), Meilensteine (wann erreichst du 10 Tsd., 50 Tsd., 100 Tsd. € …), wahlweise in heutiger
+  Kaufkraft und nach Steuern (vereinfacht: 26,375 % auf Gewinne, 30 % Teilfreistellung, 1.000 € Sparerpauschbetrag).
+- **ETF-Baukasten**: weitere ETFs hypothetisch dazunehmen (MSCI World, Schwellenländer, S&P 500, Nasdaq 100,
+  Small Cap Value, Technologie, Gold, Geldmarkt oder frei über Name, ISIN oder Kürzel suchen), jeweils mit eigener
+  Rate, Startmonat, Einmalbetrag und Annahmen. „übernehmen“ setzt Rendite und Schwankung auf die historischen Werte.
+- **Käufe** nach jeder Ausführung unter *Käufe* ergänzen. *Konto & Abgleich* vergleicht den Depotwert laut
+  Kontoauszug mit dem aus den Käufen berechneten Wert und weist auf fehlende Käufe hin.
+
+Alle Einstellungen werden automatisch gespeichert. Die Projektion ist eine Modellrechnung, keine Prognose.
+
 ## Weitere Optionen
 
 ```text
@@ -147,8 +173,9 @@ finanzen/
   ingest.py     Import in die DB und Überwachung des Inbox-Ordners
   rules.py      Regel-Engine
   analytics.py  Aggregationen für die Dashboards
+  depot.py      ETF-Depot, Sparplan-Einstellungen, Kursabruf mit Zwischenspeicher
   server.py     JSON-API und Auslieferung der Oberfläche
-  static/       Web-Oberfläche (HTML/CSS/JS, ECharts)
+  static/       Web-Oberfläche (HTML/CSS/JS, ECharts); sparplan-model.js = Rechenmodell der Projektion
 scripts/        PowerShell-Watcher, Autostart, Demo-Daten
 tests/          python -m unittest discover -s tests
 ```

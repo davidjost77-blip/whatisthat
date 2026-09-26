@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sparplan</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231baf7a'/><path d='M8 23 C13 22 17 17 24 9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round'/></svg>">
+  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="sparplan.css">
+</head>
+<body class="sp">
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--series-1)"/><path d="M8 22 L14 15 L18 19 L24 10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Finanzen</span>
+    </div>
+    <nav class="tabs">
+      <a class="tab" href="./#dashboard">Dashboard</a>
+      <a class="tab" href="./#transactions">Umsätze</a>
+      <a class="tab" href="./#categories">Kategorien &amp; Regeln</a>
+      <a class="tab" href="./#import">Import</a>
+      <a class="tab" href="sparplan.html" aria-current="page">Sparplan</a>
+    </nav>
+    <div class="topbar-status"><span class="live" id="live-chip"><i></i><span>Kurs wird geladen …</span></span></div>
+  </header>
+
+  <main class="sp-main">
+    <!-- ============================== HEUTE ============================== -->
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-text">
+        <p class="eyebrow" id="hero-title">Dein Depot heute</p>
+        <div class="hero-value" id="hero-value">–</div>
+        <div class="hero-delta" id="hero-delta"></div>
+        <dl class="hero-facts" id="hero-facts"></dl>
+        <p class="hero-note" id="hero-note" hidden></p>
+      </div>
+      <div class="hero-chart">
+        <div class="seg small" id="hist-range" role="group" aria-label="Zeitraum">
+          <button data-range="depot" class="active">Seit Start</button>
+          <button data-range="1y">1 Jahr</button>
+          <button data-range="5y">5 Jahre</button>
+          <button data-range="max">Seit Auflage</button>
+        </div>
+        <div class="chart" id="chart-history" style="height:240px"></div>
+        <p class="chart-caption" id="history-caption"></p>
+      </div>
+    </section>
+
+    <!-- ============================ ZUKUNFT ============================ -->
+    <section class="future" aria-labelledby="future-title">
+      <div class="section-head">
+        <div>
+          <h2 id="future-title">Zukunft gestalten</h2>
+          <p class="muted">Dreh an den Reglern – die Projektion rechnet sofort mit 600 simulierten Börsenverläufen.</p>
+        </div>
+      </div>
+
+      <div class="play">
+        <aside class="controls" aria-label="Annahmen">
+          <div class="ctl">
+            <label for="in-rate">Sparrate FTSE All-World <output id="out-rate"></output></label>
+            <input type="range" id="in-rate" min="0" max="2000" step="25">
+          </div>
+          <div class="ctl">
+            <label for="in-years">Anlagedauer <output id="out-years"></output></label>
+            <input type="range" id="in-years" min="1" max="45" step="1">
+          </div>
+          <div class="ctl">
+            <label for="in-dynamic">Jährliche Erhöhung der Rate <output id="out-dynamic"></output></label>
+            <input type="range" id="in-dynamic" min="0" max="10" step="0.5">
+          </div>
+          <div class="ctl">
+            <span class="ctl-label">Marktszenario</span>
+            <div class="seg" id="scenario-presets" role="group" aria-label="Marktszenario">
+              <button data-ret="4">Vorsichtig</button>
+              <button data-ret="7">Historisch</button>
+              <button data-ret="9">Rückenwind</button>
+            </div>
+          </div>
+          <div class="ctl">
+            <label for="in-ret">Rendite p. a. (vor Kosten) <output id="out-ret"></output></label>
+            <input type="range" id="in-ret" min="0" max="14" step="0.25">
+            <p class="hint" id="hint-ret"></p>
+          </div>
+          <div class="ctl">
+            <label for="in-vol">Schwankung p. a. <output id="out-vol"></output></label>
+            <input type="range" id="in-vol" min="0" max="35" step="0.5">
+          </div>
+          <details class="ctl more">
+            <summary>Kosten, Inflation &amp; Steuern</summary>
+            <div class="ctl">
+              <label for="in-ter">Laufende Kosten (TER) <output id="out-ter"></output></label>
+              <input type="range" id="in-ter" min="0" max="1.5" step="0.01">
+            </div>
+            <div class="ctl">
+              <label for="in-inflation">Inflation p. a. <output id="out-inflation"></output></label>
+              <input type="range" id="in-inflation" min="0" max="6" step="0.25">
+            </div>
+            <label class="switch"><input type="checkbox" id="in-real"><span></span> In heutiger Kaufkraft rechnen</label>
+            <label class="switch"><input type="checkbox" id="in-tax"><span></span> Nach Steuern bei Verkauf (vereinfacht)</label>
+          </details>
+          <details class="ctl more" id="lumps-box">
+            <summary>Sonderzahlungen <span class="count" id="lumps-count"></span></summary>
+            <div id="lumps"></div>
+            <button class="ghost" id="lump-add">+ Sonderzahlung</button>
+          </details>
+        </aside>
+
+        <div class="play-main">
+          <div class="outcome" id="outcome"></div>
+          <div class="card proj-card">
+            <header>
+              <div><h3 id="proj-title">Mögliche Entwicklung</h3><p id="proj-sub"></p></div>
+              <div class="seg small" id="proj-view" role="group" aria-label="Darstellung">
+                <button data-view="fan" class="active">Bandbreite</button>
+                <button data-view="split">Zinseszins</button>
+                <button data-view="etf">Nach ETF</button>
+              </div>
+            </header>
+            <div class="chart" id="chart-projection" style="height:380px"></div>
+            <div class="legend-note" id="proj-legend"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="scenarios" id="scenarios"></div>
+
+      <div class="card milestones-card">
+        <header><div><h3>Meilensteine</h3><p>Wann du welche Summe erreichst – mittlerer Verlauf, Bandbreite in 8 von 10 Fällen</p></div></header>
+        <ol class="milestones" id="milestones"></ol>
+      </div>
+    </section>
+
+    <!-- ========================== ETF-BAUKASTEN ========================== -->
+    <section class="builder" aria-labelledby="builder-title">
+      <div class="section-head">
+        <div>
+          <h2 id="builder-title">ETF-Baukasten</h2>
+          <p class="muted">Füge gedanklich weitere ETFs hinzu und sieh, wie sie das Depot verändern. Nichts davon wird gekauft.</p>
+        </div>
+        <button class="primary" id="etf-add">+ ETF hinzufügen</button>
+      </div>
+      <div class="etf-grid" id="etf-grid"></div>
+    </section>
+
+    <!-- ============================== KÄUFE ============================== -->
+    <section class="ledger" aria-labelledby="ledger-title">
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-head">
+            <div><h2 id="ledger-title">Käufe</h2><p class="muted">Grundlage für Bestand und Einstandswert. Nach jeder Sparplan-Ausführung hier ergänzen.</p></div>
+            <button class="primary" id="tx-add">+ Kauf</button>
+          </div>
+          <div class="scroll"><table class="tx-table depot-table">
+            <thead><tr><th>Datum</th><th>ETF</th><th class="num">Stück</th><th class="num">Betrag</th><th class="num">Kurs</th><th class="num">Heute</th><th></th></tr></thead>
+            <tbody id="depot-tx"></tbody>
+          </table></div>
+        </div>
+        <div class="panel">
+          <h2>Konto &amp; Abgleich</h2>
+          <form id="account-form" class="account-form">
+            <label>Guthaben (Verrechnungskonto) in € <input name="cash" type="number" step="0.01" min="0"></label>
+            <fieldset>
+              <legend>Letzter Kontoauszug</legend>
+              <label>Datum <input name="snap_date" type="date"></label>
+              <label>Depotwert in € <input name="snap_portfolio" type="number" step="0.01" min="0"></label>
+            </fieldset>
+            <button class="primary">Speichern</button>
+          </form>
+          <div id="reconcile"></div>
+        </div>
+      </div>
+    </section>
+    <p class="disclaimer">Projektionen sind Modellrechnungen auf Basis deiner Annahmen, keine Prognose und keine Anlageberatung.
+      Kurse: Yahoo Finance (verzögert), Zwischenspeicher lokal in deiner Datenbank.</p>
+  </main>
+
+  <!-- Dialoge -->
+  <dialog id="tx-dialog">
+    <form method="dialog" id="tx-form">
+      <h2 id="tx-dialog-title">Kauf</h2>
+      <label>Datum <input name="date" type="date" required></label>
+      <label>ETF (Kürzel) <input name="symbol" required list="symbol-list" autocomplete="off"></label>
+      <datalist id="symbol-list"></datalist>
+      <label>Stück <input name="shares" type="number" step="0.000001" min="0" required></label>
+      <label>Betrag in € <input name="amount" type="number" step="0.01" min="0" required></label>
+      <label>Notiz <input name="note" maxlength="200" placeholder="z. B. Sparplan"></label>
+      <p class="form-error" id="tx-error"></p>
+      <div class="dialog-actions">
+        <button type="button" class="danger" id="tx-delete">Löschen</button>
+        <span class="spacer"></span>
+        <button value="cancel" formnovalidate>Abbrechen</button>
+        <button class="primary" value="save">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="etf-dialog" class="wide">
+    <form method="dialog" id="etf-form">
+      <h2>ETF hinzufügen</h2>
+      <p class="muted">Auswahl oder freie Suche nach Name, ISIN oder Kürzel.</p>
+      <div class="catalog" id="catalog"></div>
+      <label>Suche <input type="search" id="etf-search" placeholder="z. B. IE00B4L5Y983, Stoxx 600, Dividende …"></label>
+      <div id="search-results" class="search-results"></div>
+      <div class="dialog-actions">
+        <span class="spacer"></span>
+        <button value="cancel" formnovalidate>Schließen</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script src="vendor/echarts.min.js"></script>
+  <script src="sparplan-model.js"></script>
+  <script src="sparplan.js"></script>
+</body>
+</html>

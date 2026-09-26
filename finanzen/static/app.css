@@ -98,11 +98,12 @@ h3 { font-size: 14px; margin: 0; font-weight: 600; }
 }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
 .tabs { display: flex; gap: 2px; flex-wrap: wrap; }
-.tabs button {
-  border: 0; background: none; color: var(--text-secondary); font: inherit; font-weight: 500;
+.tabs button, .tabs a.tab {
+  border: 0; text-decoration: none; background: none; color: var(--text-secondary); font: inherit; font-weight: 500;
   padding: 8px 12px; border-radius: 8px; cursor: pointer;
 }
-.tabs button:hover { background: var(--surface-2); color: var(--text-primary); }
+.tabs a.tab[aria-current="page"] { background: var(--surface-2); color: var(--text-primary); font-weight: 600; }
+.tabs button:hover, .tabs a.tab:hover { background: var(--surface-2); color: var(--text-primary); }
 .tabs button[aria-selected="true"] { background: var(--surface-2); color: var(--text-primary); font-weight: 600; }
 .badge {
   display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; margin-left: 4px;
