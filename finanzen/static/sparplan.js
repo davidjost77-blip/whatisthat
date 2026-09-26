@@ -92,13 +92,17 @@ const alpha = (color, a) => {
   return color;
 };
 
-const layerCharts = { 2: [], 3: [] };
+const layerCharts = { 2: [], 3: [], page: [] };
 function mkChart(el, level) {
   const c = echarts.init(el, null, { renderer: "svg" });
   layerCharts[level].push(c);
   return c;
 }
-function disposeCharts(level) { layerCharts[level].forEach((c) => c.dispose()); layerCharts[level] = []; }
+function disposeCharts(level) {
+  if (level === "page") return; // Seiten-Diagramme verwaltet renderPage
+  layerCharts[level].forEach((c) => c.dispose());
+  layerCharts[level] = [];
+}
 window.addEventListener("resize", () => [2, 3].forEach((l) => layerCharts[l].forEach((c) => c.resize())));
 
 function sparkSvg(values, color) {
@@ -267,76 +271,46 @@ function pearlsHtml(r, max = 12) {
   return `<div class="pearls" aria-hidden="true">${list.map((m, i) => `<span style="--i:${i}" class="pearl ${m.done ? "done" : m.due ? "missing" : "next"}" title="${MONTHS_LONG[+m.ym.slice(5) - 1]} ${m.ym.slice(0, 4)}: ${m.done ? "Kauf erfasst" : m.due ? "kein Kauf erfasst" : "steht noch aus"}"></span>`).join("")}</div>`;
 }
 
-function renderBlick() {
+// ---------- Seite: alle Abschnitte untereinander, jeder per ⤢ auch im Vollbild
+const SECTIONS = [
+  ["depot", (b) => focusDepot(b, "page")],
+  ["takt", (b) => focusTakt(b, "page")],
+  ["spiel", (b) => focusSpiel(b, "page")],
+  ["ziel", (b) => focusZiel(b, "page")],
+  ["kaeufe", (b) => depthLedger(b, "page")],
+];
+let pageRendered = false;
+async function renderSection(key) {
+  const entry = SECTIONS.find(([k]) => k === key);
+  const body = $(`#sec-${key} .sec-body`);
+  if (!entry || !body) return;
+  pruneCharts();
+  renderKey = key === "kaeufe" ? "takt" : key;
+  try { await entry[1](body); } finally { renderKey = null; }
+}
+/** Ganze Seite zeichnen; ohne `all` bleibt die Spielwiese stehen (Regler behalten ihren Zustand). */
+async function renderPage(all = false) {
   if (!state.settings) return;
   $("#context").textContent = context();
-  const d = depotNow();
-  const tiles = [];
-
-  // 1 · Depot heute: Wasserlinie
-  const diff = d.value - d.invested;
-  const q = state.quotes.get(PLAN());
-  const day = q?.prev_close && q.price ? d.shares * (q.price - q.prev_close) : null;
-  tiles.push(tile("depot", {
-    q: "Depot heute",
-    verdict: diff >= 0 ? `${signed(diff, money0)} über Einzahlungen` : `⚠ ${money0(-diff)} unter Einzahlungen`,
-    cls: diff < 0 ? "bad" : "",
-    metaphor: UI.track({ value: d.value, soll: d.invested, max: Math.max(d.value, d.invested) * 1.1 || 1, bad: diff < 0, sollLabel: "eingezahlt" }) + `<span style="height:14px"></span>`,
-    facts: [["Depotwert", UI.amount(d.value)], ["Eingezahlt", money0(d.invested)], ["Heute", day != null ? signed(day) : "–"]],
-  }));
-
-  // 2 · Takt: Monatsperlen + Abgleich
-  const r = rhythm();
-  const rec = reconcile();
-  const takBad = r.missing.length > 0 || (rec && !rec.ok);
-  tiles.push(tile("takt", {
-    q: "Sparplan-Takt",
-    verdict: r.missing.length ? `⚠ ${r.missing.length} ${r.missing.length === 1 ? "Rate fehlt" : "Raten fehlen"}`
-      : rec && !rec.ok ? `⚠ Abgleich: ${money0(Math.abs(rec.diff))} ${rec.diff > 0 ? "fehlen" : "zu viel"}` : `Im Takt: ${r.done} von ${r.due || r.done} Raten`,
-    cls: takBad ? "bad" : "",
-    metaphor: pearlsHtml(r) + `<span class="pearls-legend">● erfasst · ○ offen${r.missing.length ? " · ◌ fehlt" : ""}</span>`,
-    facts: [["Soll", `${money0(state.settings.plan.rate)} am ${state.settings.plan.day}.${state.settings.plan.active === false ? " · pausiert" : " · bucht automatisch"}`],
-      ["Abgleich", rec ? (rec.ok ? "passt zum Kontoauszug" : `≈ ${num(2).format(Math.abs(rec.shares))} Anteile Differenz`) : "kein Kontoauszug erfasst"],
-      ["Nächste Rate", dateDe(isoDate(firstPlanDate()))]],
-  }));
-
-  // 3 · Ziel: Weg zur Fahne
-  const g = goalCalc();
-  tiles.push(tile("ziel", {
-    q: `Ziel ${goalYear()}`,
-    verdict: g.reached ? `${moneyShort(goalAmount())} erreichbar` : `⚠ Ziel verfehlt: ${moneyShort(g.median)}`,
-    cls: g.reached ? "" : "bad",
-    metaphor: UI.track({ value: g.r.total[g.month], soll: goalAmount(), max: Math.max(g.r.total[g.month], goalAmount()) * 1.1, bad: !g.reached, sollLabel: `Ziel ${moneyShort(goalAmount())}` }) + `<span style="height:14px"></span>`,
-    facts: [["Ziel", UI.amount(goalAmount(), moneyShort)], ["Chance", `${Math.round(g.prob * 10)} von 10 Verläufen`],
-      [g.reached ? "Mindestrate" : "Nötige Rate", `${money0(g.need)} / Monat`]],
-  }));
-
-  // 4 · Was wäre wenn: Stellschrauben
-  runProjection();
-  const res = state.result.r;
-  const s = scen();
-  tiles.push(tile("spiel", {
-    q: "Was wäre wenn",
-    verdict: `${moneyShort(res.total[res.months])} in ${s.years} Jahren`,
-    metaphor: `<div class="knobs"><span class="knob">${money0(s.rate)} / Monat</span><span class="knob">${pctFmt.format(s.ret)} % p. a.</span><span class="knob">${s.years} Jahre</span>${state.settings.extras.filter((x) => x.enabled).length ? `<span class="knob">+${state.settings.extras.filter((x) => x.enabled).length} ETF</span>` : ""}</div>`,
-    facts: [["Mittlerer Verlauf", UI.amount(res.total[res.months], moneyShort)], ["Eingezahlt", moneyShort(res.invested[res.months])],
-      ["Bandbreite", `${moneyShort(res.bands.p10[res.months])} – ${moneyShort(res.bands.p90[res.months])}`]],
-  }));
-  const firstTiles = !$("#blick").children.length;
-  $("#blick").innerHTML = tiles.join("");
-  enterTiles(firstTiles);
+  // Diagramme der Seite neu anlegen (die Spielwiese behält ihres, solange sie nicht neu gezeichnet wird)
+  const keepPlay = !all && pageRendered;
+  layerCharts.page.forEach((c) => { if (!(keepPlay && c.getDom().closest("#sec-spiel"))) c.dispose(); });
+  layerCharts.page = layerCharts.page.filter((c) => !c.isDisposed());
+  for (const [key] of SECTIONS) if (all || key !== "spiel" || !pageRendered) await renderSection(key);
+  if (!pageRendered) {
+    pageRendered = true;
+    UI.animateLayer($("#page"), 2);
+  }
 }
-
-/** Kacheln beim ersten Zeichnen gestaffelt hereinschweben lassen. */
-function enterTiles(first) {
-  if (!first) return;
-  UI.enter($$("#blick .blick-tile"));
-  UI.fillTracks($("#blick"));
-  UI.countUp($("#blick"), ".verdict, .facts b");
+const renderBlick = () => renderPage();
+function pruneCharts() {
+  layerCharts.page.forEach((c) => { if (!c.getDom().isConnected) c.dispose(); });
+  layerCharts.page = layerCharts.page.filter((c) => !c.isDisposed());
 }
 
 // ------------------------------------------------------------------ Fokus-Bausteine
-const focusHead = (title, sub, bad, key = zoom.key) => {
+let renderKey = null; // welcher Abschnitt gerade gezeichnet wird (Seite oder Vollbild)
+const focusHead = (title, sub, bad, key = renderKey || zoom.key) => {
   const [, icon, name] = TONES[key] || [];
   return `<div class="focus-head"><div>${icon ? `<div class="tone-chip">${UI.icon(icon)}${name}</div>` : ""}<h1 class="${bad ? "bad" : ""}">${title}</h1><p>${sub}</p></div></div>`;
 };
@@ -347,8 +321,8 @@ function wireDepth(body, key) {
 }
 
 // ---------- Depot
-async function focusDepot(body) {
-  disposeCharts(2);
+async function focusDepot(body, level = 2) {
+  disposeCharts(level);
   const d = depotNow();
   const diff = d.value - d.invested;
   const q = state.quotes.get(PLAN());
@@ -372,15 +346,15 @@ async function focusDepot(body) {
   wireDepth(body, "depot");
   $$("#hist-range button", body).forEach((b) => {
     b.classList.toggle("active", b.dataset.range === state.histRange);
-    b.onclick = () => { state.histRange = b.dataset.range; $$("#hist-range button", body).forEach((x) => x.classList.toggle("active", x === b)); renderHistory(body); };
+    b.onclick = () => { state.histRange = b.dataset.range; $$("#hist-range button", body).forEach((x) => x.classList.toggle("active", x === b)); renderHistory(body, level); };
   });
-  await renderHistory(body);
+  await renderHistory(body, level);
 }
 
-async function renderHistory(body) {
+async function renderHistory(body, level = 2) {
   const t = UI.theme();
   const el = $("#chart-history", body);
-  const c = echarts.getInstanceByDom(el) || mkChart(el, 2);
+  const c = echarts.getInstanceByDom(el) || mkChart(el, level);
   const plan = PLAN();
   const cap = $("#history-caption", body);
   const legend = $("#history-legend", body);
@@ -433,8 +407,8 @@ async function renderHistory(body) {
 }
 
 // ---------- Takt
-function focusTakt(body) {
-  disposeCharts(2);
+function focusTakt(body, level = 2) {
+  disposeCharts(level);
   const t = UI.theme();
   const r = rhythm();
   const rec = reconcile();
@@ -455,7 +429,7 @@ function focusTakt(body) {
       ${depthButton}</aside></div>`;
   wireDepth(body, "takt");
   const labels = r.months.map((m) => `${MONTHS[+m.ym.slice(5) - 1]} ${m.ym.slice(2, 4)}`);
-  const chart = mkChart($("#f-rhythm", body), 2);
+  const chart = mkChart($("#f-rhythm", body), level);
   chart.setOption({
     ...UI.chartBase(t),
     xAxis: { type: "category", data: labels, axisLabel: { color: t.muted, fontSize: 11.5 }, axisLine: { lineStyle: { color: t.baseline } }, axisTick: { show: false } },
@@ -475,8 +449,8 @@ function focusTakt(body) {
 }
 
 // ---------- Tiefe: Käufe & Abgleich (für Depot und Takt)
-function depthLedger(body) {
-  disposeCharts(3);
+function depthLedger(body, level = 3) {
+  disposeCharts(level);
   body.innerHTML = focusHead("Käufe & Abgleich – exakte Zahlen", "Alle erfassten Käufe mit Kaufkurs und heutigem Wert. Rechts Guthaben und Kontoauszug für den Abgleich.") +
     $("#tpl-ledger").innerHTML;
   renderLedger(body);
@@ -553,8 +527,8 @@ function openTxDialog(tx) {
 }
 
 // ---------- Ziel
-function focusZiel(body) {
-  disposeCharts(2);
+function focusZiel(body, level = 2) {
+  disposeCharts(level);
   const t = UI.theme();
   const g = goalCalc();
   const goal = goalAmount();
@@ -591,7 +565,7 @@ function focusZiel(body) {
   const labels = Array.from({ length: g.month + 1 }, (_, m) => m);
   const diff = (hi, lo) => hi.map((v, i) => v - lo[i]);
   const goalColor = g.reached ? t.good : t.bad;
-  const chart = mkChart($("#f-goal", body), 2);
+  const chart = mkChart($("#f-goal", body), level);
   const base = UI.chartBase(t);
   chart.setOption({
     ...base,
@@ -633,8 +607,8 @@ function renderMilestones(el, r) {
   }).join("");
 }
 
-function depthZiel(body) {
-  disposeCharts(3);
+function depthZiel(body, level = 3) {
+  disposeCharts(level);
   const g = goalCalc();
   const r = g.r;
   const goal = goalAmount();
@@ -650,8 +624,8 @@ function depthZiel(body) {
 }
 
 // ---------- Was wäre wenn (Spielwiese)
-function focusSpiel(body) {
-  disposeCharts(2);
+function focusSpiel(body, level = 2) {
+  disposeCharts(level);
   body.innerHTML = focusHead("Was wäre wenn", "Dreh an den Reglern – die Projektion rechnet sofort mit 600 simulierten Börsenverläufen. Die Annahmen gelten auch für Ziel und Blick.") + $("#tpl-play").innerHTML;
   wirePlay(body);
   syncControls();
@@ -669,7 +643,8 @@ const CONTROLS = {
   inflation: { fmt: (v) => `${pctFmt.format(v)} %` },
 };
 const fillRange = (input) => input.style.setProperty("--fill", `${((input.value - input.min) / (input.max - input.min)) * 100}%`);
-const playRoot = () => (zoom.key === "spiel" ? zoom.body(2) : null);
+const playRoot = () => (zoom.key === "spiel" && zoom.level >= 2 ? zoom.body(2) : $("#sec-spiel .sec-body"));
+const playLevel = () => (zoom.key === "spiel" && zoom.level >= 2 ? 2 : "page");
 
 function syncControls() {
   const root = playRoot();
@@ -726,7 +701,8 @@ function update({ save = true } = {}) {
     }
     // Der Blick liegt verdeckt unter dem Fokus: erst nach dem Ziehen neu rechnen
     clearTimeout(blickTimer);
-    blickTimer = setTimeout(renderBlick, zoom.level > 1 ? 400 : 0);
+    // das Ziel hängt an denselben Annahmen: nach dem Ziehen neu rechnen
+    blickTimer = setTimeout(() => renderSection("ziel"), 350);
   });
   if (save) saveSettings();
 }
@@ -773,7 +749,7 @@ function renderProjection() {
   const s = scen();
   const t = UI.theme();
   const el = $("#chart-projection", root);
-  const c = echarts.getInstanceByDom(el) || mkChart(el, 2);
+  const c = echarts.getInstanceByDom(el) || mkChart(el, playLevel());
   const labels = Array.from({ length: r.months + 1 }, (_, m) => m);
   const kk = s.real ? " · in heutiger Kaufkraft" : "";
   const base = UI.chartBase(t);
@@ -1047,8 +1023,8 @@ function wirePlay(root) {
   wireDepth(root, "spiel");
 }
 
-function depthSpiel(body) {
-  disposeCharts(3);
+function depthSpiel(body, level = 3) {
+  disposeCharts(level);
   runProjection();
   const { r, pos } = state.result;
   const head = `<tr><th>Jahr</th><th class="num">Eingezahlt</th>${pos.map((p) => `<th class="num">${esc(p.name)}</th>`).join("")}<th class="num">Mittlerer Verlauf</th><th class="num">Schwach (1 von 10)</th><th class="num">Stark (1 von 10)</th><th class="num">Alltagsäquivalent</th></tr>`;
@@ -1068,13 +1044,13 @@ const zoom = new UI.Zoom({
   overview: "Sparplan",
   context: () => context(),
   items: {
-    depot: { label: "Depot heute", tone: "gold", focus: focusDepot, depth: depthLedger, depthLabel: "Käufe" },
-    takt: { label: "Sparplan-Takt", tone: "sky", focus: focusTakt, depth: depthLedger, depthLabel: "Käufe" },
-    ziel: { label: "Ziel", tone: "violet", focus: focusZiel, depth: depthZiel, depthLabel: "Tabelle" },
-    spiel: { label: "Was wäre wenn", tone: "teal", focus: focusSpiel, depth: depthSpiel, depthLabel: "Tabelle" },
+    depot: { label: "Depot heute", tone: "gold", focus: (b) => focusDepot(b, 2), depth: (b) => depthLedger(b, 3), depthLabel: "Käufe" },
+    takt: { label: "Sparplan-Takt", tone: "sky", focus: (b) => focusTakt(b, 2), depth: (b) => depthLedger(b, 3), depthLabel: "Käufe" },
+    ziel: { label: "Ziel", tone: "violet", focus: (b) => focusZiel(b, 2), depth: (b) => depthZiel(b, 3), depthLabel: "Tabelle" },
+    spiel: { label: "Was wäre wenn", tone: "teal", focus: (b) => focusSpiel(b, 2), depth: (b) => depthSpiel(b, 3), depthLabel: "Tabelle" },
   },
-  // Esc im Blick führt zurück zur Übersicht der Finanzen
-  onEscapeTop: () => UI.zoomTo("./#dashboard", null),
+  // zurück auf der Seite: Inhalte an Änderungen im Vollbild angleichen
+  onChange: (level) => { if (level === 1 && pageRendered) renderPage(true); },
 });
 
 // ------------------------------------------------------------------ Verdrahtung
@@ -1089,11 +1065,10 @@ async function reloadDepot() {
 }
 
 function wire() {
-  const openTile = (el) => zoom.open(el.dataset.key, 2, el);
-  $("#blick").addEventListener("click", (e) => { const el = e.target.closest(".blick-tile"); if (el) openTile(el); });
-  $("#blick").addEventListener("keydown", (e) => {
-    const el = e.target.closest(".blick-tile");
-    if (el && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openTile(el); }
+  // ⤢ öffnet einen Abschnitt im Vollbild
+  $("#page").addEventListener("click", (e) => {
+    const z = e.target.closest("[data-zoom]");
+    if (z) zoom.open(z.dataset.zoom, 2, z.closest(".page-sec") || z);
   });
   $("#catalog").addEventListener("click", (e) => { const b = e.target.closest("button[data-symbol]"); if (b) addExtra({ symbol: b.dataset.symbol }); });
   let searchTimer;

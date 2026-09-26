@@ -110,41 +110,35 @@ Streaming, Versicherungen …) und für vier Kategorien ein Beispiel-Budget gese
 
 ## Dashboards
 
-Gestaltet nach **[DESIGN.md](DESIGN.md)** (verbindlich, Stand 4): drei Zoomstufen, ein Farbton „Papier & Bronze“ mit
-warmen Graustufen, Rot nur für Warnungen, Schrift Inter, Umschalter Hell/Dunkel/System,
-Bewegung in allen Teilen (Kacheln schweben herein, Balken füllen sich, Zahlen zählen hoch, Diagramme wachsen), jede Zahl mit Soll-Wert und Alltagsäquivalent, Breadcrumb und <kbd>Esc</kbd> für den Weg zurück.
+Gestaltet nach **[DESIGN.md](DESIGN.md)** (verbindlich, Stand 5): ein Farbton „Papier & Bronze“ mit warmen Graustufen,
+Rot nur für Warnungen, Schrift Inter, Umschalter Hell/Dunkel/System, Bewegung in allen Teilen, jede Zahl mit Soll-Wert
+und Alltagsäquivalent.
 
-| Stufe | Was du siehst | So kommst du hin |
-|---|---|---|
-| **Blick** | vier Kacheln, jede mit Urteil („364 € unter Plan“), Metapher, Soll und Ist | Startseite |
-| **Fokus** | ein Element bildschirmfüllend mit Trend und Vergleich, alles andere ist ausgeblendet | Kachel anklicken, sie wächst zum Fokus |
-| **Tiefe** | exakte Zahlen als Tabelle und die Maßstäbe zum Einstellen | „Exakte Zahlen (Tiefe)“ |
+Die Startseite zeigt alles auf einen Blick, geordnet nach Wichtigkeit, und folgt der Filterleiste (Zeitraum, Konto):
 
-<kbd>Esc</kbd> geht jeweils eine Stufe zurück, auch aus den Umsätzen zurück in die Tabelle, aus der du gekommen bist.
-Jede Stufe hat eine eigene Adresse (z. B. `#dashboard/fokus/ausgaben`), Neuladen behält also den Kontext.
-Der Schalter **„Bewegung“** oben rechts stellt alle Animationen ab (auch die Systemeinstellung „Bewegung reduzieren“ wird beachtet).
+1. **Kennzahlen**: Einnahmen, Ausgaben (gegen das Monats-Soll), Überschuss, Sparquote (gegen 20 %)
+2. **Geldfluss** im Zentrum: links die Einnahmequellen, rechts die Kategorien, „Sparen & Depot“ und „Übrig“. Die Ströme
+   fließen dauerhaft, ihre Breite entspricht dem Betrag, Kategorien über Soll sind rot. **Klick auf eine Kategorie** zeigt
+   ihre Zusammensetzung: Unterkategorien und größte Empfänger als eigener Fluss.
+3. **Kategorien gegen Soll** (Budget bzw. Ø der letzten 6 Monate) und **Depot & Sparplan**
+4. **Einnahmen & Ausgaben pro Monat**
+5. **Größte Ausgaben** und **Top-Empfänger**
 
-![Übersicht](docs/dashboard.png)
+**⤢** öffnet Karten im Vollbild (Trend, Vergleich, exakte Tabellen), <kbd>Esc</kbd> geht zurück. Die Maßstäbe
+(Monats-Soll, Fixkosten, Sparquote-Soll) stellst du im Vollbild „Ausgaben“ unter *Exakte Zahlen* ein; welche Kategorien
+Fixkosten sind, im Kategorie-Dialog.
 
-Die vier Kacheln der Übersicht:
+![Übersicht mit Geldfluss](docs/dashboard.png)
 
-- **Ausgaben im Monat**: bisherige Ausgaben gegen das Soll bis heute. Fixkosten zählen ab Monatsanfang voll, der Rest
-  anteilig. Im Fokus: Tag-für-Tag-Verlauf gegen Soll-Pfad und Vormonat, Hochrechnung aufs Monatsende, 13-Monats-Trend.
-- **Sparquote** der letzten 12 vollen Monate gegen das Soll (Standard 20 %), im Fokus Monatsquoten und aufsummierter Überschuss.
-- **Kategorien**: Ist gegen Soll je Kategorie (Monatsbudget, sonst Ø der letzten 6 Monate), im Fokus mit Verlauf je Kategorie.
-- **Depot & Sparplan**: Wert gegen Einzahlungen. Die Kachel führt in den Sparplan.
-
-**Maßstäbe und Alltagsäquivalente:** Das Monats-Soll ist der Durchschnitt der letzten 6 vollen Monate, die Fixkosten
-der Durchschnitt aller Kategorien mit dem Merkmal *Fixkosten* (Standard: Wohnen, Versicherungen, Abos & Streaming,
-Kredite & Raten; einstellbar im Kategorie-Dialog). Daraus werden „≈ 3,5 Tage Budget“ und „≈ 1,8 Monate Fixkosten“.
-Eigene Werte trägst du in der Tiefe unter *Maßstäbe* ein.
-
-![Fokus Ausgaben im Dunkelmodus](docs/dashboard-dunkel.png)
+![Zusammensetzung einer Kategorie](docs/dashboard-dunkel.png)
 
 ## Sparplan & ETF-Projektion
 
 Unter **Sparplan** (<http://localhost:8765/sparplan.html>) bildet die App deinen ETF-Sparplan ab. Vorbelegt ist der laufende
 Plan: 250 € monatlich in den **Vanguard FTSE All-World (Acc)** (VWCE, IE00BK5BQT80) mit den bisherigen Käufen.
+
+Die Sparplan-Seite ist eine durchgehende Seite: Depot heute, Sparplan-Takt, Was wäre wenn, Ziel, Käufe & Abgleich.
+Jeder Abschnitt lässt sich per ⤢ im Vollbild öffnen.
 
 ![Sparplan](docs/sparplan.png)
 

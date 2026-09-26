@@ -47,13 +47,50 @@
   </section>
 
   <main>
-    <!-- ======================= DASHBOARD: BLICK ======================= -->
+    <!-- ============================ DASHBOARD ============================ -->
     <section class="view" id="view-dashboard">
-      <div class="blick-bar">
-        <h1>Deine Finanzen <span>auf einen Blick</span></h1>
+      <div class="empty-state" id="dash-empty" hidden>
+        <h2>Noch keine Buchungen im Zeitraum</h2>
+        <p>Importiere einen CSV-Export deiner Banking-App – per Drag &amp; Drop unter <a href="#import">Import</a>
+          oder indem du die Datei in den Inbox-Ordner legst.</p>
       </div>
-      <div class="blick" id="blick" aria-label="Übersicht"></div>
-      <p class="blick-foot muted" id="blick-foot"></p>
+      <div id="dash-content">
+        <!-- 1 · Kennzahlen -->
+        <div class="kpis" id="kpis"></div>
+        <!-- 2 · Geldfluss im Zentrum -->
+        <article class="card flow-card" data-card="flow">
+          <header><div><h3>Geldfluss</h3><p id="flow-sub"></p></div></header>
+          <div class="flow" id="flow"></div>
+        </article>
+        <div class="grid">
+          <!-- 3 · Budgets und Depot -->
+          <article class="card span-8" data-card="budgets">
+            <header><div><h3>Kategorien gegen Soll</h3><p id="budget-sub"></p></div>
+              <button class="zoom-btn" type="button" data-zoom="kategorien" title="Im Vollbild öffnen" aria-label="Kategorien im Vollbild öffnen">⤢</button></header>
+            <div class="budgets" id="budgets"></div>
+          </article>
+          <article class="card span-4" data-card="depot">
+            <header><div><h3>Depot &amp; Sparplan</h3><p>Wert gegen Einzahlungen</p></div></header>
+            <div id="depot-mini"></div>
+          </article>
+          <!-- 4 · Verlauf -->
+          <article class="card span-12" data-card="monthly">
+            <header><div><h3>Einnahmen &amp; Ausgaben pro Monat</h3><p id="monthly-sub"></p></div>
+              <button class="zoom-btn" type="button" data-zoom="ausgaben" title="Ausgaben im Vollbild" aria-label="Ausgaben im Vollbild öffnen">⤢</button></header>
+            <div class="chart" id="chart-monthly" style="height:300px"></div>
+          </article>
+          <!-- 5 · Details -->
+          <article class="card span-6" data-card="largest">
+            <header><div><h3>Größte Ausgaben</h3><p>Einzelbuchungen im Zeitraum</p></div></header>
+            <div class="largest" id="largest"></div>
+          </article>
+          <article class="card span-6" data-card="partners">
+            <header><div><h3>Top-Empfänger</h3><p>Wohin im Zeitraum am meisten Geld floss</p></div></header>
+            <div class="partners" id="partners"></div>
+          </article>
+        </div>
+        <p class="blick-foot muted">⤢ öffnet eine Karte im Vollbild, <kbd>Esc</kbd> schließt es wieder.</p>
+      </div>
     </section>
 
     <!-- ============================ UMSÄTZE ============================ -->
@@ -232,6 +269,7 @@
   <script src="vendor/echarts.min.js"></script>
   <script src="vendor/motion.js"></script>
   <script src="ui-core.js"></script>
+  <script src="flow.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

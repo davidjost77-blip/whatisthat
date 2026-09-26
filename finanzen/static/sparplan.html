@@ -27,13 +27,34 @@
 
   <div class="crumbbar"><nav class="crumbs" id="crumbs" aria-label="Pfad"></nav><span class="context" id="context"></span></div>
 
-  <main>
-    <!-- Blick: vier Kacheln (DESIGN.md) -->
-    <div class="blick-bar">
-      <h1>Dein Sparplan <span>auf einen Blick</span></h1>
-    </div>
-    <div class="blick" id="blick" aria-label="Sparplan auf einen Blick"></div>
-    <p class="blick-foot muted" id="blick-foot">Kachel anklicken für den Fokus, <kbd>Esc</kbd> geht eine Stufe zurück.
+  <main id="page">
+    <div class="blick-bar"><h1>Dein Sparplan</h1></div>
+    <section class="page-sec" id="sec-depot" data-key="depot">
+      <header class="sec-head"><div><h2>Depot heute</h2><p>Wert gegen Einzahlungen, Kursverlauf</p></div>
+        <button class="zoom-btn" type="button" data-zoom="depot" title="Im Vollbild öffnen" aria-label="Depot heute im Vollbild öffnen">⤢</button></header>
+      <div class="sec-body"></div>
+    </section>
+    <section class="page-sec" id="sec-takt" data-key="takt">
+      <header class="sec-head"><div><h2>Sparplan-Takt</h2><p>Eine Rate pro Monat – automatisch gebucht</p></div>
+        <button class="zoom-btn" type="button" data-zoom="takt" title="Im Vollbild öffnen" aria-label="Sparplan-Takt im Vollbild öffnen">⤢</button></header>
+      <div class="sec-body"></div>
+    </section>
+    <section class="page-sec" id="sec-spiel" data-key="spiel">
+      <header class="sec-head"><div><h2>Was wäre wenn</h2><p>Projektion mit Reglern, Szenarien und ETF-Baukasten</p></div>
+        <button class="zoom-btn" type="button" data-zoom="spiel" title="Im Vollbild öffnen" aria-label="Was wäre wenn im Vollbild öffnen">⤢</button></header>
+      <div class="sec-body"></div>
+    </section>
+    <section class="page-sec" id="sec-ziel" data-key="ziel">
+      <header class="sec-head"><div><h2>Ziel</h2><p>Mittlerer Verlauf gegen deinen Zielbetrag</p></div>
+        <button class="zoom-btn" type="button" data-zoom="ziel" title="Im Vollbild öffnen" aria-label="Ziel im Vollbild öffnen">⤢</button></header>
+      <div class="sec-body"></div>
+    </section>
+    <section class="page-sec" id="sec-kaeufe" data-key="kaeufe">
+      <header class="sec-head"><div><h2>Käufe &amp; Abgleich</h2><p>Alle Käufe, Sparplan-Einstellungen, Kontoauszug</p></div>
+        <button class="zoom-btn" type="button" data-zoom="takt" title="Im Vollbild öffnen" aria-label="Käufe &amp; Abgleich im Vollbild öffnen">⤢</button></header>
+      <div class="sec-body"></div>
+    </section>
+    <p class="blick-foot muted">⤢ öffnet einen Abschnitt im Vollbild, <kbd>Esc</kbd> schließt es wieder.
       Projektionen sind Modellrechnungen, keine Prognose und keine Anlageberatung. Kurse: Yahoo Finance (verzögert).</p>
   </main>
 

@@ -115,9 +115,14 @@ def dashboard(conn, date_from=None, date_to=None, accounts=None):
     income_top = defaultdict(int)
     daily = defaultdict(int)
     partners = defaultdict(lambda: {"amount": 0, "count": 0})
+    income_cat = defaultdict(int)
+    saving = defaultdict(int)  # Umbuchungen zum Sparen (ohne „Eigene Konten“), netto abgeflossen
     for tx in txs:
         k = cl.kind(tx)
         if k == "transfer":
+            cat = cats.get(tx["category_id"])
+            if cat and "eigene konten" not in cat["name"].lower():
+                saving[cat["name"]] -= tx["amount"]
             continue
         m = tx["date"][:7]
         cat = cl.top(tx)
@@ -125,6 +130,7 @@ def dashboard(conn, date_from=None, date_to=None, accounts=None):
         if k == "income":
             monthly[m]["income"] += tx["amount"]
             income_top[cid] += tx["amount"]
+            income_cat[tx["category_id"] or 0] += tx["amount"]
             continue
         value = -tx["amount"]
         monthly[m]["expense"] += value
@@ -224,6 +230,12 @@ def dashboard(conn, date_from=None, date_to=None, accounts=None):
         "monthly": list(monthly.values()),
         "categories": categories,
         "stacked": stacked,
+        # Geldfluss: links Einnahmequellen, rechts Ausgaben-Kategorien, Sparen und Rest
+        "flow": {
+            "sources": [{**info(cid, UNCAT_IN), "amount": v} for cid, v in sorted(income_cat.items(), key=lambda kv: -kv[1]) if v > 0],
+            "saving": sum(v for v in saving.values() if v > 0),
+            "saving_parts": [{"name": n, "amount": v} for n, v in sorted(saving.items(), key=lambda kv: -kv[1]) if v > 0],
+        },
         "category_months": {str(cid): [max(vals.get(m, 0), 0) for m in months] for cid, vals in cat_month.items()},
         "sankey": {"nodes": nodes, "links": links},
         "balance": balance,
@@ -351,3 +363,36 @@ def measures(conn, targets, today=None, window=6):
         },
         "targets": targets,
     }
+
+
+def category_flow(conn, cid, date_from=None, date_to=None, accounts=None, top=4):
+    """Zusammensetzung einer Ausgaben-Oberkategorie: Unterkategorien und ihre größten Empfänger (Cent)."""
+    cats = load_categories(conn)
+    if cid not in cats and cid != 0:
+        raise KeyError("Kategorie nicht gefunden")
+    cl = Classifier(cats)
+    groups = defaultdict(lambda: defaultdict(int))
+    for tx in _fetch(conn, date_from, date_to, accounts):
+        if cl.kind(tx) != "expense":
+            continue
+        cat = cats.get(tx["category_id"])
+        top_id = cat["top_id"] if cat else 0
+        if top_id != cid:
+            continue
+        sub = cat["name"] if cat and cat["parent_id"] else "Allgemein" if cat else "Nicht kategorisiert"
+        name = tx["counterparty"] or tx["purpose"][:40] or "Unbekannt"
+        groups[sub][name] -= tx["amount"]
+    children = []
+    for sub, partners in groups.items():
+        items = sorted(((n, v) for n, v in partners.items() if v > 0), key=lambda kv: -kv[1])
+        total = sum(v for _, v in items)
+        if total <= 0:
+            continue
+        shown = [{"name": n, "amount": v} for n, v in items[:top]]
+        rest = sum(v for _, v in items[top:])
+        if rest > 0:
+            shown.append({"name": f"{len(items) - top} weitere", "amount": rest, "rest": True})
+        children.append({"name": sub, "amount": total, "partners": shown})
+    children.sort(key=lambda c: -c["amount"])
+    name = cats[cid]["name"] if cid else "Nicht kategorisiert"
+    return {"id": cid, "name": name, "amount": sum(c["amount"] for c in children), "children": children}

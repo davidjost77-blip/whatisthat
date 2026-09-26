@@ -227,6 +227,18 @@ class MeasuresTests(unittest.TestCase):
         self.assertEqual((own["soll"]["monthly_expense"], own["soll"]["fixed"]), (200000, 120000))
         self.assertEqual(own["soll"]["fixed_source"], "eigener Wert")
 
+    def test_flow_and_composition(self):
+        d = analytics.dashboard(self.conn, "2026-09-01", "2026-09-30")
+        self.assertEqual([x["name"] for x in d["flow"]["sources"]], ["Gehalt"])
+        self.assertEqual(d["flow"]["sources"][0]["amount"], 300000)
+        wohnen = next(c for c in d["categories"] if c["name"] == "Wohnen")
+        comp = analytics.category_flow(self.conn, wohnen["id"], "2026-09-01", "2026-09-30")
+        self.assertEqual(comp["amount"], 100000)
+        self.assertEqual(comp["children"][0]["name"], "Miete")
+        self.assertEqual(comp["children"][0]["partners"][0], {"name": "Miete", "amount": 100000})
+        with self.assertRaises(KeyError):
+            analytics.category_flow(self.conn, 9999)
+
     def test_empty_database(self):
         self.conn.execute("DELETE FROM transactions")
         m = analytics.measures(self.conn, {"savings_rate": 20})

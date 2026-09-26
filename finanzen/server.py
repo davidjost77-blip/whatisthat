@@ -69,6 +69,7 @@ class App:
             ("DELETE", r"/api/imports/(\d+)", self.delete_import),
             ("GET", r"/api/export\.csv", self.export_csv),
             ("GET", r"/api/measures", self.measures),
+            ("GET", r"/api/category_flow", self.category_flow),
             ("GET", r"/api/depot", self.get_depot),
             ("PUT", r"/api/depot/settings", self.update_depot_settings),
             ("POST", r"/api/depot/tx", self.create_depot_tx),
@@ -100,7 +101,23 @@ class App:
 
     def dashboard(self, conn, req):
         q = req.query
-        return analytics.dashboard(conn, q.get("from", [None])[0], q.get("to", [None])[0], q.get("account"))
+        date_from, date_to = q.get("from", [None])[0], q.get("to", [None])[0]
+        data = analytics.dashboard(conn, date_from, date_to, q.get("account"))
+        if not data.get("empty"):
+            # Sparplan-Käufe im Zeitraum – Ersatz für den Sparen-Strom, falls die Bank-Umbuchung nicht im Export ist
+            rng = data["range"]
+            data["flow"]["depot"] = conn.execute(
+                "SELECT COALESCE(SUM(amount), 0) FROM depot_tx WHERE date BETWEEN ? AND ?", (rng["from"], rng["to"])
+            ).fetchone()[0]
+        return data
+
+    def category_flow(self, conn, req):
+        q = req.query
+        try:
+            return analytics.category_flow(conn, int(q.get("id", ["0"])[0]), q.get("from", [None])[0], q.get("to", [None])[0],
+                                           q.get("account"))
+        except KeyError as e:
+            raise ApiError(str(e), HTTPStatus.NOT_FOUND)
 
     def measures(self, conn, req):
         return analytics.measures(conn, depot.get_settings(conn)["targets"])

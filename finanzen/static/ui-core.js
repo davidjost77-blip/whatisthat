@@ -310,8 +310,8 @@
    * prefix: Hash-Präfix, z. B. "dashboard/" → #dashboard/fokus/ausgaben
    */
   class Zoom {
-    constructor({ items, crumbs = [], overview = "Übersicht", prefix = "", context = () => "", onEscapeTop = null, crumbTarget = "#crumbs" }) {
-      Object.assign(this, { items, crumbs, overview, prefix, context, onEscapeTop, crumbTarget });
+    constructor({ items, crumbs = [], overview = "Übersicht", prefix = "", context = () => "", onEscapeTop = null, onChange = null, crumbTarget = "#crumbs" }) {
+      Object.assign(this, { items, crumbs, overview, prefix, context, onEscapeTop, onChange, crumbTarget });
       this.level = 1;
       this.key = null;
       this.origins = {};
@@ -458,6 +458,7 @@
       if (level === 1) this.key = null;
       this.renderCrumbs();
       this.syncHash();
+      this.onChange?.(this.level, this.key);
       const origin = this.origins[level + 1];
       if (origin?.isConnected) origin.focus?.({ preventScroll: true });
     }

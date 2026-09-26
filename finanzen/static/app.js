@@ -115,7 +115,7 @@ function showView(view) {
   state.view = view;
   $$(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.view === view)));
   $$(".view").forEach((v) => (v.hidden = v.id !== `view-${view}`));
-  $("#filterbar").hidden = view !== "transactions";
+  $("#filterbar").hidden = !["dashboard", "transactions"].includes(view);
   if (view === "dashboard") state.returnTo = null;
   saveUrl();
   renderAppCrumbs();
@@ -202,13 +202,14 @@ async function loadDashboard() {
     const m = await UI.loadMeasures();
     const ym = m.ref.slice(0, 7);
     const curTo = `${ym}-${String(daysIn(ym)).padStart(2, "0")}`;
-    const [cur, year, depot] = await Promise.all([
+    const [period, cur, year, depot] = await Promise.all([
+      api("GET", `/api/dashboard?${filterQuery()}`),
       api("GET", `/api/dashboard?from=${ym}-01&to=${curTo}`),
       api("GET", `/api/dashboard?from=${shiftMonth(ym, -12)}-01&to=${curTo}`),
       loadDepotSummary(),
     ]);
-    Object.assign(dash, { m, cur, year, depot, ym, ref: m.ref });
-    renderBlick();
+    Object.assign(dash, { m, period, cur, year, depot, ym, ref: m.ref });
+    renderStart();
     if (zoom.level > 1) await zoom.refresh();
   } catch (e) {
     toast(`Übersicht konnte nicht geladen werden: ${e.message}`, { error: true });
@@ -259,105 +260,8 @@ function calc() {
   return { empty, days, day, progress, sollMonth, fixedPart, sollToDate, ist, forecast, full, income, expense, rate, sollRate, cats };
 }
 
-const context = () => (dash.ref ? `Stand ${dateDe(dash.ref)} · ${monthLong(dash.ym)}` : "");
-
-function tile(key, { q, verdict, cls = "", metaphor, facts }) {
-  const [tone, icon] = TONES[key];
-  return `<div class="blick-tile" role="button" tabindex="0" data-key="${key}" data-tone="${tone}" aria-label="${esc(q)}: ${esc(verdict.replace(/<[^>]+>/g, ""))}. Öffnen">
-    <span class="q">${UI.icon(icon)}${esc(q)}</span><span class="more-hint" aria-hidden="true">Fokus ↗</span>
-    <span class="verdict ${cls}">${verdict}</span>
-    <div class="metaphor">${metaphor}</div>
-    <div class="facts">${facts.map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join("")}</div>
-  </div>`;
-}
-
-function renderBlick() {
-  const c = calc();
-  $("#context").textContent = context();
-  const noData = `<span class="muted">Noch keine Umsätze – <a href="#import">CSV importieren</a></span>`;
-  const tiles = [];
-
-  // 1 · Ausgaben: Monatsweg
-  if (c.empty || c.sollMonth == null) {
-    tiles.push(tile("ausgaben", { q: "Ausgaben im Monat", verdict: c.empty ? "Keine Daten" : `${money0(c.ist * 100)} ausgegeben`, metaphor: c.empty ? noData : UI.track({ value: c.ist, max: c.ist || 1 }),
-      facts: [["Soll", "noch kein Maßstab"]] }));
-  } else {
-    const diff = c.ist - c.sollToDate;
-    const bad = diff > c.sollToDate * TOLERANCE;
-    tiles.push(tile("ausgaben", {
-      q: "Ausgaben im Monat",
-      verdict: bad ? `⚠ ${UI.money0(diff)} über Plan` : `${UI.money0(Math.abs(diff))} ${diff > 0 ? "über" : "unter"} Plan`,
-      cls: bad ? "bad" : "",
-      metaphor: UI.track({ value: c.ist, soll: c.sollToDate, max: Math.max(c.sollMonth, c.ist) * 1.02, bad, sollLabel: `Soll heute (Tag ${c.day})` }) +
-        `<span style="height:14px"></span>`,
-      facts: [["Ausgegeben", UI.amount(c.ist)], ["Soll bis heute", UI.money0(c.sollToDate)], ["Monats-Soll", `${UI.money0(c.sollMonth)} <small class="equiv">${esc(dash.m.soll.monthly_expense_source || "")}</small>`]],
-    }));
-  }
-
-  // 2 · Sparquote: Polster
-  if (c.rate == null) {
-    tiles.push(tile("sparquote", { q: "Sparquote 12 Monate", verdict: "Keine Einnahmen erfasst", metaphor: c.empty ? noData : `<span class="muted">Ohne Gehaltseingang keine Quote.</span>`, facts: [["Soll", UI.pct(c.sollRate)]] }));
-  } else {
-    const bad = c.rate < c.sollRate;
-    const surplus = c.income - c.expense;
-    tiles.push(tile("sparquote", {
-      q: `Sparquote · ${c.full.length} Monate`,
-      verdict: bad ? `⚠ ${UI.pct(c.rate)} statt ${UI.pct(c.sollRate)}` : `${UI.pct(c.rate)} – Soll ${UI.pct(c.sollRate)} erreicht`,
-      cls: bad ? "bad" : "",
-      metaphor: UI.track({ value: Math.max(0, c.rate), soll: c.sollRate, max: Math.max(c.rate, c.sollRate) * 1.25 || 30, bad, sollLabel: `Soll ${UI.pct(c.sollRate)}` }) + `<span style="height:14px"></span>`,
-      facts: [["Überschuss", UI.amount(surplus)], ["pro Monat", UI.money0(surplus / (c.full.length || 1))],
-        ["Soll-Überschuss", UI.money0((c.income * c.sollRate) / 100)]],
-    }));
-  }
-
-  // 3 · Kategorien: Ausreißer
-  const over = c.cats.filter((x) => x.over);
-  const shown = c.cats.filter((x) => x.toDate != null).slice(0, 3);
-  const maxRatio = Math.max(1.3, ...shown.map((x) => x.ist / (x.toDate || 1)));
-  tiles.push(tile("kategorien", {
-    q: "Kategorien im Monat",
-    verdict: c.empty ? "Keine Daten" : over.length ? `⚠ ${esc(over[0].name)} ${UI.money0(over[0].dev)} über Soll` : "Alle im Rahmen",
-    cls: over.length ? "bad" : "",
-    metaphor: c.empty ? noData : shown.map((x) => `<div class="mini-row"><span>${esc(x.name)}</span>${UI.track({ value: x.ist / x.toDate, soll: 1, max: maxRatio, bad: x.over, height: 8 })}</div>`).join(""),
-    facts: [["Über Soll", `${over.length} von ${c.cats.filter((x) => x.soll != null).length}`],
-      ...(over.length ? [["Summe drüber", UI.amount(over.reduce((s, x) => s + x.dev, 0))]] : [["Größter Posten", c.cats[0] ? `${esc(c.cats.slice().sort((a, b) => b.ist - a.ist)[0].name)}` : "–"]])],
-  }));
-
-  // 4 · Depot: Wasserlinie (führt in den Sparplan)
-  const d = dash.depot;
-  if (!d || !d.count) {
-    tiles.push(tile("depot", { q: "Depot & Sparplan", verdict: "Sparplan einrichten", metaphor: `<span class="muted">Käufe im Sparplan erfassen</span>`, facts: [] }));
-  } else {
-    const diff = d.value - d.invested;
-    tiles.push(tile("depot", {
-      q: "Depot & Sparplan",
-      verdict: diff >= 0 ? `${UI.signed(diff)} über Einzahlungen` : `⚠ ${UI.money0(-diff)} unter Einzahlungen`,
-      cls: diff < 0 ? "bad" : "",
-      metaphor: UI.track({ value: d.value, soll: d.invested, max: Math.max(d.value, d.invested) * 1.1, bad: diff < 0, sollLabel: "eingezahlt" }) + `<span style="height:14px"></span>`,
-      facts: [["Depotwert", UI.amount(d.value)], ["Eingezahlt", UI.money0(d.invested)], ["Sparplan", `${UI.money0(d.rate)} / Monat${d.live ? "" : ' <small class="equiv">ohne Live-Kurs</small>'}`]],
-    }));
-  }
-  const firstTiles = !$("#blick").children.length;
-  $("#blick").innerHTML = tiles.join("");
-  enterTiles(firstTiles);
-  const src = dash.m.soll;
-  $("#blick-foot").innerHTML = `Maßstäbe: Monats-Soll ${src.monthly_expense ? `${UI.money0(eurOf(src.monthly_expense))} (${esc(src.monthly_expense_source)})` : "–"} ·
-    Fixkosten ${src.fixed ? `${UI.money0(eurOf(src.fixed))} / Monat (${esc(src.fixed_source)})` : "unbekannt"} · Tagesbudget ${src.daily ? UI.money0(eurOf(src.daily)) : "–"}.
-    Kachel anklicken für den Fokus, <kbd>Esc</kbd> geht zurück.`;
-  const badge = $("#uncat-badge");
-  const uncat = dash.year && !dash.year.empty ? dash.year.kpis.uncategorized : 0;
-  badge.hidden = !uncat;
-  badge.textContent = uncat;
-  badge.title = `${uncat} Buchungen ohne Kategorie`;
-}
-
-/** Kacheln beim ersten Zeichnen gestaffelt hereinschweben lassen. */
-function enterTiles(first) {
-  if (!first) return;
-  UI.enter($$("#blick .blick-tile"));
-  UI.fillTracks($("#blick"));
-  UI.countUp($("#blick"), ".verdict, .facts b");
-}
+// Vollbild-Ansichten Ausgaben/Sparquote/Kategorien beziehen sich auf den laufenden Monat, die Zusammensetzung auf den Zeitraum
+const context = (key) => (key === "zusammensetzung" ? periodLabel() : dash.ref ? `Stand ${dateDe(dash.ref)} · ${monthLong(dash.ym)}` : "");
 
 // ---------- Diagramme in den Zoom-Ebenen
 const layerCharts = { 2: [], 3: [] };
@@ -716,6 +620,304 @@ function depthKategorien(body) {
   $("#d-to-cats", body).onclick = () => { state.returnTo = { key: "kategorien", level: 3 }; zoom.go(1, false).then(() => showView("categories")); };
 }
 
+// ---------- Startseite: alles auf einer Seite, nach Wichtigkeit geordnet; Zoom per ⤢ als Extra
+const pageCharts = new Map();
+function pageChart(el) {
+  let c = pageCharts.get(el.id);
+  if (!c || c.isDisposed() || c.getDom() !== el) {
+    c = echarts.init(el, null, { renderer: "svg" });
+    pageCharts.set(el.id, c);
+    new ResizeObserver(() => c.resize()).observe(el);
+  }
+  return c;
+}
+const periodMonths = () => dash.period?.range?.months?.length || 1;
+const periodLabel = () => {
+  const r = dash.period?.range;
+  if (!r) return "";
+  return r.months.length === 1 ? monthLong(r.months[0]) : `${dateDe(r.from)} – ${dateDe(r.to)} · ${r.months.length} Monate`;
+};
+/** Soll einer Oberkategorie im gewählten Zeitraum (Monatsbudget, sonst Ø der letzten 6 Monate) in €. */
+function catSoll(id) {
+  const c = state.cats.get(id);
+  const cents = c?.budget || dash.m?.category_avg?.[String(id)];
+  return cents ? eurOf(cents) * periodMonths() : null;
+}
+
+function sparkline(values) {
+  if (!values || values.length < 2) return "";
+  const w = 200, h = 34, pad = 3;
+  const min = Math.min(...values), max = Math.max(...values), span = max - min || 1;
+  const pts = values.map((v, i) => [pad + (i * (w - 2 * pad)) / (values.length - 1), h - pad - ((v - min) / span) * (h - 2 * pad)]);
+  const d = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join("");
+  const last = pts[pts.length - 1];
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <path d="${d}L${w - pad},${h}L${pad},${h}Z" fill="${UI.alpha(UI.tone("gold"), 0.12)}"/>
+    <path d="${d}" fill="none" stroke="${UI.tone("gold")}" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+    <circle cx="${last[0]}" cy="${last[1]}" r="3.5" fill="${UI.tone("gold")}" stroke="${css("--surface-1")}" stroke-width="2"/></svg>`;
+}
+function deltaText(current, previous, upIsGood) {
+  if (previous == null || previous === 0) return `<span class="muted">kein Vergleichszeitraum</span>`;
+  const change = ((current - previous) / Math.abs(previous)) * 100;
+  if (Math.abs(change) < 0.5) return `<span class="muted">≈ wie im Vorzeitraum</span>`;
+  const up = change > 0;
+  const bad = up !== upIsGood;
+  // Riesige Prozente (Vorzeitraum fast leer) sagen nichts aus
+  const text = Math.abs(change) > 300 ? (up ? "deutlich mehr" : "deutlich weniger") : UI.pct(Math.abs(change));
+  return `<span class="${bad ? "sig-bad" : "sig-good"}">${up ? "▲" : "▼"} ${text}</span> <span class="muted">ggü. Vorzeitraum</span>`;
+}
+
+function renderStart() {
+  const d = dash.period;
+  $("#context").textContent = periodLabel();
+  const empty = !d || d.empty;
+  $("#dash-empty").hidden = !empty;
+  $("#dash-content").hidden = empty;
+  if (empty) return;
+  const first = !$("#kpis").children.length;
+  renderKpis(d);
+  renderFlow(d);
+  renderBudgets(d);
+  renderDepotCard();
+  renderMonthly(d);
+  renderLargest(d);
+  renderPartners(d);
+  if (first) {
+    UI.enter($$("#kpis .kpi, #dash-content .card"), { y: 20, stagger: 0.05 });
+    UI.countUp($("#kpis"), ".value");
+  }
+  UI.fillTracks($("#budgets"));
+  const badge = $("#uncat-badge");
+  badge.hidden = !d.kpis.uncategorized;
+  badge.textContent = d.kpis.uncategorized;
+  badge.title = `${d.kpis.uncategorized} Buchungen ohne Kategorie`;
+}
+
+// 1 · Kennzahlen mit Maßstab
+function renderKpis(d) {
+  const k = d.kpis, prev = k.prev || {}, m = d.monthly, n = periodMonths();
+  const sollMonth = dash.m?.soll?.monthly_expense ? eurOf(dash.m.soll.monthly_expense) : null;
+  const sollExpense = sollMonth != null ? sollMonth * n : null;
+  const expense = eurOf(k.expense), income = eurOf(k.income), net = eurOf(k.net);
+  const sollRate = dash.m?.soll?.savings_rate ?? 20;
+  const overExpense = sollExpense != null && expense > sollExpense * (1 + TOLERANCE);
+  const lowRate = k.savings_rate != null && k.savings_rate < sollRate;
+  const tiles = [
+    { label: "Einnahmen", value: UI.money0(income), sub: deltaText(k.income, prev.income, true), spark: m.map((x) => x.income) },
+    { label: "Ausgaben", key: "ausgaben", value: UI.money0(expense), bad: overExpense,
+      sub: sollExpense != null ? `<span class="${overExpense ? "sig-bad" : ""}">${overExpense ? "⚠ " : ""}Soll ${UI.money0(sollExpense)}</span> · ${deltaText(k.expense, prev.expense, false)}` : deltaText(k.expense, prev.expense, false),
+      spark: m.map((x) => x.expense) },
+    { label: "Überschuss", value: UI.money0(net), bad: net < 0, sub: `<span class="equiv">${UI.equiv(net)}</span> · ${deltaText(k.net, prev.net, true)}`, spark: m.map((x) => x.net) },
+    { label: "Sparquote", key: "sparquote", value: k.savings_rate == null ? "–" : UI.pct(k.savings_rate), bad: lowRate,
+      sub: k.savings_rate == null ? `<span class="muted">zu wenig Einnahmen im Zeitraum</span>` : `<span class="${lowRate ? "sig-bad" : "sig-good"}">${lowRate ? "⚠" : "✓"} Soll ${UI.pct(sollRate)}</span>`,
+      spark: m.map((x) => (x.income ? Math.max((x.net / x.income) * 100, -100) : 0)) },
+  ];
+  $("#kpis").innerHTML = tiles.map((x) => `
+    <div class="kpi${x.bad ? " is-bad" : ""}">
+      <div class="label">${x.label}${x.key ? `<button class="zoom-btn" type="button" data-zoom="${x.key}" title="Im Vollbild öffnen" aria-label="${x.label} im Vollbild öffnen">⤢</button>` : ""}</div>
+      <div class="value${x.bad ? " sig-bad" : ""}">${x.value}</div>
+      <div class="delta">${x.sub}</div>
+      ${sparkline(x.spark)}
+    </div>`).join("");
+}
+
+// 2 · Geldfluss im Zentrum
+const MAX_TARGETS = 8;
+function renderFlow(d) {
+  const f = d.flow;
+  const income = f.sources.reduce((s, x) => s + eurOf(x.amount), 0);
+  const cats = d.categories.filter((c) => c.amount > 0);
+  const shown = cats.slice(0, MAX_TARGETS), rest = cats.slice(MAX_TARGETS);
+  const saving = eurOf(f.saving) || eurOf(f.depot);
+  const savingLabel = f.saving ? (f.saving_parts.length === 1 ? `${f.saving_parts[0].name} & Depot` : "Sparen & Depot") : "Sparplan (Depot)";
+  const expense = cats.reduce((s, c) => s + eurOf(c.amount), 0);
+  const outflow = expense + saving;
+  const left = income - outflow;
+  const nodes = [], links = [];
+  f.sources.forEach((s, i) => {
+    nodes.push({ id: `in${i}`, name: s.name, value: eurOf(s.amount), col: 0, click: true, cat: s.id, kind: "income" });
+    links.push({ from: `in${i}`, to: "hub", value: eurOf(s.amount) });
+  });
+  if (left < 0) {
+    nodes.push({ id: "reserve", name: "Aus Rücklagen", value: -left, col: 0, cls: "rest" });
+    links.push({ from: "reserve", to: "hub", value: -left, cls: "rest" });
+  }
+  nodes.push({ id: "hub", name: "Verfügbar", value: Math.max(income, outflow), col: 1, cls: "hub" });
+  for (const c of shown) {
+    const soll = catSoll(c.id);
+    const v = eurOf(c.amount);
+    const bad = soll != null && v > soll * (1 + TOLERANCE) && v - soll >= 5;
+    nodes.push({ id: `c${c.id}`, name: c.name, value: v, col: 2, cls: bad ? "bad" : "", click: true, cat: c.id, kind: "expense", soll,
+      sub: bad ? `⚠ +${UI.money0(v - soll)}` : `${UI.pct((v / (income || outflow)) * 100, 0)}` });
+    links.push({ from: "hub", to: `c${c.id}`, value: v, cls: bad ? "bad" : "" });
+  }
+  if (rest.length) {
+    const v = rest.reduce((s, c) => s + eurOf(c.amount), 0);
+    nodes.push({ id: "other", name: `${rest.length} weitere`, value: v, col: 2, cls: "rest" });
+    links.push({ from: "hub", to: "other", value: v, cls: "rest" });
+  }
+  if (saving > 0) {
+    nodes.push({ id: "save", name: savingLabel, value: saving, col: 2, cls: "save", click: true, kind: "save", sub: `${UI.pct((saving / (income || outflow)) * 100, 0)}` });
+    links.push({ from: "hub", to: "save", value: saving, cls: "save" });
+  }
+  if (left > 0) {
+    nodes.push({ id: "left", name: "Übrig", value: left, col: 2, cls: "rest", sub: UI.equiv(left) });
+    links.push({ from: "hub", to: "left", value: left, cls: "rest" });
+  }
+  $("#flow-sub").textContent = `${periodLabel()} · Einnahmen ${UI.money0(income)} → Ausgaben ${UI.money0(expense)}${saving ? `, gespart ${UI.money0(saving)}` : ""}${left > 0 ? `, übrig ${UI.money0(left)}` : ""}. Kategorie anklicken für die Zusammensetzung.`;
+  Flow.render($("#flow"), { nodes, links }, {
+    label: "Geldfluss: Einnahmen links, Ausgaben und Sparen rechts",
+    format: (v) => UI.money0(v),
+    detail: (x, type, from, to) => {
+      if (type === "node") {
+        const soll = x.soll != null ? `<br>Soll ${UI.money0(x.soll)}${x.value > x.soll ? ` · <span class="sig-bad">⚠ ${UI.money0(x.value - x.soll)} drüber</span>` : ""}` : "";
+        return `<b>${esc(x.name)}</b> · ${UI.money0(x.value)}<br><span class="muted">${UI.equiv(x.value)}</span>${soll}${x.click ? `<br><span class="muted">Klick: ${x.kind === "save" ? "zum Sparplan" : x.kind === "income" ? "Umsätze zeigen" : "Zusammensetzung"}</span>` : ""}`;
+      }
+      return `${esc(from.name)} → <b>${esc(to.name)}</b><br>${UI.money0(x.value)} · <span class="muted">${UI.equiv(x.value)}</span>`;
+    },
+    onClick: (n, el) => {
+      if (n.kind === "save") return UI.zoomTo("sparplan.html", el);
+      if (n.kind === "income") return goToTransactions({ from: dash.period.range.from, to: dash.period.range.to, category: n.cat || "", direction: "in" });
+      dash.flowCat = n.cat;
+      zoom.open("zusammensetzung", 2, el);
+    },
+  });
+}
+
+// 3 · Budgets & Soll je Kategorie
+function renderBudgets(d) {
+  const rows = d.categories.filter((c) => c.amount > 0 && c.id).map((c) => {
+    const soll = catSoll(c.id);
+    const v = eurOf(c.amount);
+    return { c, v, soll, bad: soll != null && v > soll * (1 + TOLERANCE) && v - soll >= 5 };
+  }).filter((r) => r.soll != null).sort((a, b) => (b.v / b.soll) - (a.v / a.soll)).slice(0, 7);
+  const over = rows.filter((r) => r.bad);
+  $("#budget-sub").innerHTML = over.length ? `<span class="sig-bad">⚠ ${over.length} über Soll</span> · Soll = Budget bzw. Ø 6 Monate × ${periodMonths()}` : `✓ alle im Rahmen · Soll = Budget bzw. Ø 6 Monate × ${periodMonths()}`;
+  const max = Math.max(1.25, ...rows.map((r) => r.v / r.soll));
+  $("#budgets").innerHTML = rows.map((r) => `<div class="budget-row" data-cat="${r.c.id}" role="button" tabindex="0" title="Zusammensetzung öffnen">
+      <div class="row"><span class="name">${esc(r.c.name)}</span><span class="nums ${r.bad ? "sig-bad" : ""}">${r.bad ? "⚠ " : ""}${UI.money0(r.v)} <small>/ ${UI.money0(r.soll)}</small></span></div>
+      ${UI.track({ value: r.v / r.soll, soll: 1, max, bad: r.bad, height: 9 })}
+      <div class="state">${r.bad ? `${UI.money0(r.v - r.soll)} drüber · ${UI.equiv(r.v - r.soll)}` : `noch ${UI.money0(r.soll - r.v)} Spielraum`}</div></div>`).join("")
+    || `<p class="empty-note">Noch kein Maßstab – nach einigen Monaten mit Umsätzen erscheint hier das Soll.</p>`;
+}
+
+// 4 · Depot-Kurzblick
+function renderDepotCard() {
+  const d = dash.depot;
+  const el = $("#depot-mini");
+  if (!d || !d.count) { el.innerHTML = `<p class="empty-note">Noch kein Sparplan erfasst. <a href="sparplan.html">Zum Sparplan</a></p>`; return; }
+  const diff = d.value - d.invested;
+  el.innerHTML = `<div class="depot-value ${diff < 0 ? "sig-bad" : ""}">${UI.money0(d.value)}</div>
+    <div class="depot-diff ${diff < 0 ? "sig-bad" : "sig-good"}">${diff < 0 ? "⚠ " : ""}${UI.signed(diff)} ggü. Einzahlungen</div>
+    ${UI.track({ value: d.value, soll: d.invested, max: Math.max(d.value, d.invested) * 1.1, bad: diff < 0, height: 9, sollLabel: "eingezahlt" })}
+    <dl class="depot-facts"><dt>Eingezahlt</dt><dd>${UI.money0(d.invested)}</dd><dt>Sparplan</dt><dd>${UI.money0(d.rate)} / Monat</dd>
+      <dt>Wert</dt><dd><small class="equiv">${UI.equiv(d.value)}</small></dd></dl>
+    <a class="button primary-link" href="sparplan.html" id="to-plan">Zum Sparplan →</a>`;
+  UI.fillTracks(el);
+}
+
+// 5 · Monatsverlauf
+function renderMonthly(d) {
+  const t = UI.theme();
+  const months = d.range.months;
+  const n = periodMonths();
+  const sollMonth = dash.m?.soll?.monthly_expense ? eurOf(dash.m.soll.monthly_expense) : null;
+  const inc = d.monthly.map((x) => eurOf(x.income)), exp = d.monthly.map((x) => eurOf(x.expense));
+  $("#monthly-sub").textContent = n === 1 ? "Ein Monat im Zeitraum – für den Verlauf einen längeren Zeitraum wählen" : "Einnahmen (grau) und Ausgaben (Bronze) je Monat, gestrichelt das Monats-Soll. Klick auf einen Monat zeigt die Umsätze.";
+  const c = pageChart($("#chart-monthly"));
+  c.setOption({
+    ...UI.chartBase(t),
+    grid: { left: 8, right: 16, top: 28, bottom: 4, containLabel: true },
+    xAxis: { type: "category", data: months.map(monthLabel), axisLabel: { color: t.muted, fontSize: 11.5 }, axisLine: { lineStyle: { color: t.baseline } }, axisTick: { show: false } },
+    yAxis: UI.valueAxis(t),
+    tooltip: { ...UI.chartBase(t).tooltip, axisPointer: { type: "shadow", shadowStyle: { color: t.grid, opacity: 0.4 } }, formatter: (ps) => {
+      const i = ps[0].dataIndex;
+      return `<b>${monthLong(months[i])}</b>` + UI.tipRow(UI.mark(t.ink3), "Einnahmen", UI.money0(inc[i])) + UI.tipRow(UI.mark(t.gold), "Ausgaben", UI.money0(exp[i])) +
+        UI.tipRow("", "Überschuss", UI.signed(inc[i] - exp[i])) + (sollMonth ? UI.tipRow(UI.mark(t.ink1, true), "Soll Ausgaben", UI.money0(sollMonth)) : "");
+    } },
+    series: [
+      { name: "Einnahmen", type: "bar", ...UI.barAnim(), barMaxWidth: 20, barGap: "15%", data: inc, itemStyle: { color: t.ink3, borderRadius: [4, 4, 0, 0] } },
+      { name: "Ausgaben", type: "bar", ...UI.barAnim(), barMaxWidth: 20, data: exp.map((v) => ({ value: v, itemStyle: { color: sollMonth && v > sollMonth * (1 + TOLERANCE) ? t.bad : UI.barFill(t.gold), borderRadius: [4, 4, 0, 0] } })),
+        markLine: sollMonth ? { symbol: "none", silent: true, data: [{ yAxis: sollMonth }], lineStyle: { color: t.ink1, type: "dashed", width: 1.5 },
+          label: { formatter: `Soll ${UI.moneyShort(sollMonth)}`, color: t.text, position: "insideEndTop", fontSize: 11 } } : undefined },
+    ],
+  }, true);
+  c.off("click");
+  c.on("click", (p) => {
+    const ym = months[p.dataIndex];
+    goToTransactions({ from: `${ym}-01`, to: iso(new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0)), direction: p.seriesName === "Einnahmen" ? "in" : "out" });
+  });
+}
+
+// 6 · Details
+function renderLargest(d) {
+  const box = $("#largest");
+  box.innerHTML = d.largest.map((x) => `<div class="item" data-q="${esc(x.counterparty)}" data-date="${x.date}">
+      <div style="min-width:0"><div class="who">${esc(x.counterparty || x.purpose || "Unbekannt")}</div>
+      <div class="meta">${esc(catName(x.category_id))} · ${dateDe(x.date)}</div></div>
+      <div class="amt">${money(x.amount)}<small class="equiv">${UI.equiv(eurOf(x.amount))}</small></div></div>`).join("")
+    || `<p class="empty-note">Keine Ausgaben im Zeitraum.</p>`;
+  $$(".item", box).forEach((el) => (el.onclick = () => goToTransactions({ q: el.dataset.q, from: el.dataset.date, to: el.dataset.date })));
+}
+function renderPartners(d) {
+  const list = d.top_partners.slice(0, 8);
+  const max = Math.max(...list.map((x) => x.amount), 1);
+  $("#partners").innerHTML = list.map((x) => `<div class="partner" data-q="${esc(x.name)}" role="button" tabindex="0">
+      <span class="name">${esc(x.name)}</span><span class="bar"><i style="width:${(x.amount / max) * 100}%"></i></span>
+      <span class="amt">${money0(x.amount)} <small>${x.count}×</small></span></div>`).join("") || `<p class="empty-note">Keine Ausgaben im Zeitraum.</p>`;
+  $$("#partners .partner").forEach((el) => (el.onclick = () => goToTransactions({ q: el.dataset.q, from: dash.period.range.from, to: dash.period.range.to, direction: "out" })));
+}
+
+// ---------- Vollbild „Zusammensetzung“: Kategorie → Unterkategorien → Empfänger
+async function focusComposition(body) {
+  disposeCharts(2);
+  const id = dash.flowCat ?? dash.period?.categories?.[0]?.id ?? 0;
+  const r = dash.period.range;
+  const data = await api("GET", `/api/category_flow?${filterQuery({ id, from: r.from, to: r.to })}`);
+  dash.composition = data;
+  const total = eurOf(data.amount);
+  const soll = catSoll(id);
+  const bad = soll != null && total > soll * (1 + TOLERANCE);
+  body.innerHTML = focusHead(`${esc(data.name)}: ${UI.money0(total)}`,
+    `${periodLabel()} · ${UI.equiv(total)}${soll != null ? ` · Soll ${UI.money0(soll)}${bad ? ` – <span class="sig-bad">⚠ ${UI.money0(total - soll)} drüber</span>` : " – im Rahmen"}` : ""}. Woraus sich die Kategorie zusammensetzt.`, bad, "kategorien") +
+    `<div class="focus-grid"><section class="focus-card"><h2>Zusammensetzung</h2><p>Unterkategorien und ihre größten Empfänger – die Breite entspricht dem Betrag</p>
+      <div class="flow" id="comp-flow"></div></section>
+      <aside class="focus-card compare">
+        ${data.children.map((c) => cmpRow(esc(c.name), UI.money0(eurOf(c.amount)), `${UI.pct((c.amount / (data.amount || 1)) * 100, 0)} der Kategorie · ${UI.equiv(eurOf(c.amount))}`)).join("") || cmpRow("Keine Ausgaben", "–")}
+        ${depthButton}</aside></div>`;
+  wireDepth(body, "zusammensetzung");
+  const nodes = [{ id: "cat", name: data.name, value: total, col: 0, cls: bad ? "bad" : "" }], links = [];
+  data.children.forEach((c, i) => {
+    nodes.push({ id: `s${i}`, name: c.name, value: eurOf(c.amount), col: 1 });
+    links.push({ from: "cat", to: `s${i}`, value: eurOf(c.amount), cls: bad ? "bad" : "" });
+    c.partners.forEach((p, j) => {
+      nodes.push({ id: `p${i}_${j}`, name: p.name.length > 30 ? `${p.name.slice(0, 29)}…` : p.name, value: eurOf(p.amount), col: 2, cls: p.rest ? "rest" : "" });
+      links.push({ from: `s${i}`, to: `p${i}_${j}`, value: eurOf(p.amount), cls: p.rest ? "rest" : "" });
+    });
+  });
+  if (data.children.length) {
+    Flow.render($("#comp-flow", body), { nodes, links }, {
+      label: `Zusammensetzung ${data.name}`, format: (v) => UI.money0(v),
+      height: Math.min(620, Math.max(320, nodes.filter((n) => n.col === 2).length * 40 + 40)),
+      detail: (x, type, from, to) => type === "node" ? `<b>${esc(x.name)}</b> · ${UI.money0(x.value)}<br><span class="muted">${UI.equiv(x.value)}</span>`
+        : `${esc(from.name)} → <b>${esc(to.name)}</b><br>${UI.money0(x.value)}`,
+    });
+  }
+}
+function depthComposition(body) {
+  disposeCharts(3);
+  const data = dash.composition;
+  const rows = data.children.flatMap((c) => [`<tr><td><b>${esc(c.name)}</b></td><td class="num"><b>${money(c.amount)}</b></td><td class="num">${UI.pct((c.amount / (data.amount || 1)) * 100)}</td><td class="num equiv">${UI.equiv(eurOf(c.amount))}</td></tr>`,
+    ...c.partners.map((p) => `<tr class="child"><td>${esc(p.name)}</td><td class="num">${money(p.amount)}</td><td class="num">${UI.pct((p.amount / (data.amount || 1)) * 100)}</td><td class="num equiv">${UI.equiv(eurOf(p.amount))}</td></tr>`)]);
+  body.innerHTML = focusHead(`${esc(data.name)} – exakte Zahlen`, `${periodLabel()}`, false, "kategorien") +
+    `<div class="depth-grid"><section class="focus-card scroll-x"><table class="depth-table"><thead><tr><th>Unterkategorie / Empfänger</th><th class="num">Betrag</th><th class="num">Anteil</th><th class="num">Alltagsäquivalent</th></tr></thead><tbody>${rows.join("")}</tbody></table></section>
+     <aside class="focus-card form-grid"><button type="button" id="comp-tx">Alle Umsätze dieser Kategorie →</button></aside></div>`;
+  $("#comp-tx", body).onclick = () => {
+    state.returnTo = { key: "zusammensetzung", level: 3 };
+    zoom.go(1, false).then(() => goToTransactions({ from: dash.period.range.from, to: dash.period.range.to, category: data.id, direction: "" }));
+  };
+}
+
 /** Aus einer Zoomstufe in die Umsätze springen; Esc führt dorthin zurück. */
 function openTransactions({ month, category = "", direction = "" }) {
   state.returnTo = zoom.level > 1 ? { key: zoom.key, level: zoom.level } : null;
@@ -732,6 +934,7 @@ const zoom = new UI.Zoom({
     ausgaben: { label: "Ausgaben", tone: "violet", focus: focusAusgaben, depth: depthAusgaben, depthLabel: "Tabelle" },
     sparquote: { label: "Sparquote", tone: "teal", focus: focusSparquote, depth: depthSparquote, depthLabel: "Tabelle" },
     kategorien: { label: "Kategorien", tone: "sky", focus: focusKategorien, depth: depthKategorien, depthLabel: "Tabelle" },
+    zusammensetzung: { label: "Zusammensetzung", tone: "sky", focus: focusComposition, depth: depthComposition, depthLabel: "Tabelle" },
   },
   onEscapeTop: () => {
     if (state.view === "dashboard") return;
@@ -1027,19 +1230,16 @@ function wire() {
     const v = location.hash.slice(1).split("/")[0];
     if (["dashboard", "transactions", "categories", "import"].includes(v) && v !== state.view) showView(v);
   });
-  // Blick: Kachel öffnet ihren Fokus (Depot führt räumlich in den Sparplan)
-  const openTile = (el) => {
-    if (el.dataset.key === "depot") return UI.zoomTo("sparplan.html", el);
-    zoom.open(el.dataset.key, 2, el);
-  };
-  $("#blick").addEventListener("click", (e) => {
-    if (e.target.closest("a")) return;
-    const el = e.target.closest(".blick-tile");
-    if (el) openTile(el);
+  // ⤢ öffnet die Vollbild-Ansicht einer Karte; Budget-Zeile öffnet die Zusammensetzung der Kategorie
+  $("#view-dashboard").addEventListener("click", (e) => {
+    const z = e.target.closest("[data-zoom]");
+    if (z) return zoom.open(z.dataset.zoom, 2, z.closest(".card, .kpi") || z);
+    const row = e.target.closest(".budget-row");
+    if (row) { dash.flowCat = +row.dataset.cat; zoom.open("zusammensetzung", 2, row); }
   });
-  $("#blick").addEventListener("keydown", (e) => {
-    const el = e.target.closest(".blick-tile");
-    if (el && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openTile(el); }
+  $("#view-dashboard").addEventListener("keydown", (e) => {
+    const row = e.target.closest(".budget-row");
+    if (row && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); dash.flowCat = +row.dataset.cat; zoom.open("zusammensetzung", 2, row); }
   });
   $("#crumbs").addEventListener("click", (e) => {
     const a = e.target.closest("[data-home], [data-return]");
@@ -1133,7 +1333,7 @@ function wire() {
   dz.addEventListener("drop", (e) => { e.preventDefault(); dz.classList.remove("over"); uploadFiles([...e.dataTransfer.files]); });
 
   // Theme-Wechsel: Diagramme mit den Farben des neuen Modus neu zeichnen
-  const retheme = () => { if (dash.m) { renderBlick(); if (zoom.level > 1) zoom.refresh(); } };
+  const retheme = () => { if (dash.m) { renderStart(); if (zoom.level > 1) zoom.refresh(); } };
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", retheme);
   new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 }
