@@ -67,6 +67,7 @@ class App:
             ("GET", r"/api/imports", self.list_imports),
             ("DELETE", r"/api/imports/(\d+)", self.delete_import),
             ("GET", r"/api/export\.csv", self.export_csv),
+            ("GET", r"/api/measures", self.measures),
             ("GET", r"/api/depot", self.get_depot),
             ("PUT", r"/api/depot/settings", self.update_depot_settings),
             ("POST", r"/api/depot/tx", self.create_depot_tx),
@@ -99,6 +100,9 @@ class App:
     def dashboard(self, conn, req):
         q = req.query
         return analytics.dashboard(conn, q.get("from", [None])[0], q.get("to", [None])[0], q.get("account"))
+
+    def measures(self, conn, req):
+        return analytics.measures(conn, depot.get_settings(conn)["targets"])
 
     def suggestions(self, conn, req):
         return analytics.uncategorized_groups(conn, int(req.query.get("limit", [30])[0]))
@@ -205,12 +209,13 @@ class App:
             raise ApiError("Farbe bitte als #rrggbb angeben.")
         budget = euro_to_cents(body["budget"]) if "budget" in body else current.get("budget")
         sort = int(body.get("sort", current.get("sort", 0)) or 0)
-        return name, parent_id, kind, color, budget, sort
+        fixed = 1 if body.get("fixed", current.get("fixed", 0)) else 0
+        return name, parent_id, kind, color, budget, sort, fixed
 
     def create_category(self, conn, req):
         values = self._category_values(conn, req.json())
         cid = conn.execute(
-            "INSERT INTO categories (name, parent_id, kind, color, budget, sort) VALUES (?, ?, ?, ?, ?, ?)", values
+            "INSERT INTO categories (name, parent_id, kind, color, budget, sort, fixed) VALUES (?, ?, ?, ?, ?, ?, ?)", values
         ).lastrowid
         conn.commit()
         return dict(conn.execute("SELECT * FROM categories WHERE id = ?", (cid,)).fetchone())
@@ -221,7 +226,7 @@ class App:
             raise ApiError("Kategorie nicht gefunden.", HTTPStatus.NOT_FOUND)
         values = self._category_values(conn, req.json(), dict(current))
         conn.execute(
-            "UPDATE categories SET name = ?, parent_id = ?, kind = ?, color = ?, budget = ?, sort = ? WHERE id = ?",
+            "UPDATE categories SET name = ?, parent_id = ?, kind = ?, color = ?, budget = ?, sort = ?, fixed = ? WHERE id = ?",
             values + (cid,),
         )
         # Unterkategorien übernehmen Art der Oberkategorie

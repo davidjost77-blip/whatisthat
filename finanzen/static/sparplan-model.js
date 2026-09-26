@@ -137,6 +137,13 @@
           cols[m][k] = sum / d;
         }
       }
+      // Anteil der Verläufe, die zum Stichmonat eine Schwelle erreichen (vor dem Sortieren)
+      if (opts.probe && cols[opts.probe.month]) {
+        const col = cols[opts.probe.month];
+        let hit = 0;
+        for (let k = 0; k < paths; k++) if (col[k] >= opts.probe.threshold) hit++;
+        bands.prob = hit / paths;
+      }
       for (const col of cols) {
         col.sort();
         bands.p10.push(quantile(col, 0.1)); bands.p25.push(quantile(col, 0.25)); bands.p50.push(quantile(col, 0.5));
@@ -160,7 +167,20 @@
     return taxable * 0.26375;
   }
 
-  const api = { holding, depotHistory, project, reachMonth, taxOnSale, monthlyGrowth, mulberry32 };
+  /** Monatsrate, mit der der mittlere Verlauf im Monat `month` den Betrag `target` erreicht (Bisektion). */
+  function requiredRate(positions, opts, month, target) {
+    const at = (rate) => project(positions.map((p, i) => (i === 0 ? { ...p, rate } : p)), { ...opts, months: month, paths: 0 }).total[month];
+    if (at(0) >= target) return 0;
+    let lo = 0, hi = 1000;
+    while (at(hi) < target && hi < 1e6) hi *= 2;
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      if (at(mid) >= target) hi = mid; else lo = mid;
+    }
+    return hi;
+  }
+
+  const api = { requiredRate, holding, depotHistory, project, reachMonth, taxOnSale, monthlyGrowth, mulberry32 };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.SparplanModel = api;
 })(typeof window !== "undefined" ? window : globalThis);

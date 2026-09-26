@@ -7,8 +7,8 @@ Kategorien und Regeln** automatisch zuordnet und alles in **Dashboards** darstel
 ![Dashboard](docs/dashboard.png)
 
 **Datenschutz:** Alles läuft auf deinem Rechner. Der Server lauscht nur auf `127.0.0.1`, die Daten liegen in einer
-SQLite-Datei unter `data/`, und es gibt keine Cloud und kein Tracking. Die Diagrammbibliothek (ECharts) ist mitgeliefert,
-die App funktioniert also auch offline.
+SQLite-Datei unter `data/`, und es gibt keine Cloud und kein Tracking. Die Diagrammbibliothek (ECharts) und die
+Animationsbibliothek (Motion) sind mitgeliefert, die App funktioniert also auch offline.
 
 ## Schnellstart (Windows)
 
@@ -110,20 +110,34 @@ Streaming, Versicherungen …) und für vier Kategorien ein Beispiel-Budget gese
 
 ## Dashboards
 
-Alle Diagramme reagieren auf die gemeinsame Filterzeile (Zeitraum, Konto). Ein Klick auf Balken, Monate oder Tage
-springt zu den passenden Umsätzen. Jede Karte hat eine **Tabellenansicht**, außerdem gibt es einen Dunkelmodus
-(folgt der Systemeinstellung).
+Gestaltet nach **[DESIGN.md](DESIGN.md)** (verbindlich): drei Zoomstufen, Graustufen mit Farbe nur für Abweichungen,
+jede Zahl mit Soll-Wert und Alltagsäquivalent, Breadcrumb und <kbd>Esc</kbd> für den Weg zurück.
 
-- **Kennzahlen**: Einnahmen, Ausgaben, Überschuss, Sparquote, jeweils mit Verlauf und Vergleich zum gleich langen Vorzeitraum
-- **Einnahmen & Ausgaben** pro Monat mit Überschuss-Linie
-- **Ausgaben nach Kategorie** mit Anteil und Unterkategorien im Tooltip
-- **Geldfluss** (Sankey): Einnahmequellen → verfügbares Geld → Kategorien und Überschuss
-- **Kategorien im Zeitverlauf**: gestapelt, die sieben größten Kategorien plus „Übrige“
-- **Budgets** mit Warnstufen (ab 85 % und bei Überschreitung)
-- **Kontostand-Verlauf**: kumulierte Buchungen. Er beginnt bei 0 mit dem ersten Import und zeigt daher die Entwicklung, nicht den absoluten Kontostand.
-- **Top-Empfänger**, **Ausgaben-Kalender** (Heatmap pro Tag) und **größte Einzelausgaben**
+| Stufe | Was du siehst | So kommst du hin |
+|---|---|---|
+| **Blick** | vier Kacheln, jede mit Urteil („364 € unter Plan“), Metapher, Soll und Ist | Startseite |
+| **Fokus** | ein Element bildschirmfüllend mit Trend und Vergleich, alles andere ist ausgeblendet | Kachel anklicken, sie wächst zum Fokus |
+| **Tiefe** | exakte Zahlen als Tabelle und die Maßstäbe zum Einstellen | „Exakte Zahlen (Tiefe)“ |
 
-![Dunkelmodus](docs/dashboard-dunkel.png)
+<kbd>Esc</kbd> geht jeweils eine Stufe zurück, auch aus den Umsätzen zurück in die Tabelle, aus der du gekommen bist.
+Jede Stufe hat eine eigene Adresse (z. B. `#dashboard/fokus/ausgaben`), Neuladen behält also den Kontext.
+
+![Übersicht](docs/dashboard.png)
+
+Die vier Kacheln der Übersicht:
+
+- **Ausgaben im Monat**: bisherige Ausgaben gegen das Soll bis heute. Fixkosten zählen ab Monatsanfang voll, der Rest
+  anteilig. Im Fokus: Tag-für-Tag-Verlauf gegen Soll-Pfad und Vormonat, Hochrechnung aufs Monatsende, 13-Monats-Trend.
+- **Sparquote** der letzten 12 vollen Monate gegen das Soll (Standard 20 %), im Fokus Monatsquoten und aufsummierter Überschuss.
+- **Kategorien**: Ist gegen Soll je Kategorie (Monatsbudget, sonst Ø der letzten 6 Monate), im Fokus mit Verlauf je Kategorie.
+- **Depot & Sparplan**: Wert gegen Einzahlungen. Die Kachel führt in den Sparplan.
+
+**Maßstäbe und Alltagsäquivalente:** Das Monats-Soll ist der Durchschnitt der letzten 6 vollen Monate, die Fixkosten
+der Durchschnitt aller Kategorien mit dem Merkmal *Fixkosten* (Standard: Wohnen, Versicherungen, Abos & Streaming,
+Kredite & Raten; einstellbar im Kategorie-Dialog). Daraus werden „≈ 3,5 Tage Budget“ und „≈ 1,8 Monate Fixkosten“.
+Eigene Werte trägst du in der Tiefe unter *Maßstäbe* ein.
+
+![Fokus Ausgaben im Dunkelmodus](docs/dashboard-dunkel.png)
 
 ## Sparplan & ETF-Projektion
 
@@ -132,22 +146,22 @@ Plan: 250 € monatlich in den **Vanguard FTSE All-World (Acc)** (VWCE, IE00BK5B
 
 ![Sparplan](docs/sparplan.png)
 
-- **Depot heute**: Wert mit dem aktuellen Kurs, Gewinn seit dem ersten Kauf, Tagesveränderung, Ø Kaufkurs, Guthaben.
-  Das Diagramm zeigt den Depotwert pro Handelstag gegen die Einzahlungen (Punkte = Käufe) und wahlweise den Kursverlauf
-  über 1 Jahr, 5 Jahre oder seit Auflage.
-- **Live-Kurse** kommen über den lokalen Server von Yahoo Finance (Xetra, verzögert) und werden in der Datenbank
-  zwischengespeichert. Der aktuelle Kurs wird jede Minute aktualisiert. Ohne Internet rechnet die App mit dem letzten
-  gespeicherten Stand bzw. dem letzten Kaufkurs; der Punkt in der Kopfzeile zeigt das an (grün = live, gelb = gespeichert).
-- **Zukunft gestalten**: Sparrate, Laufzeit, jährliche Erhöhung, Rendite, Schwankung, Kosten (TER), Inflation und
-  Sonderzahlungen per Regler. Die Projektion zeigt den mittleren Verlauf und die Bandbreite aus 600 simulierten
-  Börsenverläufen, alternativ die Aufteilung *Eingezahlt vs. Zinseszins* oder den Beitrag jedes ETFs. Dazu kommen drei
-  Szenarien (4 / 7 / 9 % p. a.), Meilensteine (wann erreichst du 10 Tsd., 50 Tsd., 100 Tsd. € …), wahlweise in heutiger
-  Kaufkraft und nach Steuern (vereinfacht: 26,375 % auf Gewinne, 30 % Teilfreistellung, 1.000 € Sparerpauschbetrag).
-- **ETF-Baukasten**: weitere ETFs hypothetisch dazunehmen (MSCI World, Schwellenländer, S&P 500, Nasdaq 100,
-  Small Cap Value, Technologie, Gold, Geldmarkt oder frei über Name, ISIN oder Kürzel suchen), jeweils mit eigener
-  Rate, Startmonat, Einmalbetrag und Annahmen. „übernehmen“ setzt Rendite und Schwankung auf die historischen Werte.
-- **Käufe** nach jeder Ausführung unter *Käufe* ergänzen. *Konto & Abgleich* vergleicht den Depotwert laut
-  Kontoauszug mit dem aus den Käufen berechneten Wert und weist auf fehlende Käufe hin.
+- **Depot heute**: Wert gegen Einzahlungen. Im Fokus Depotwert pro Handelstag, Kursverlauf (1 Jahr, 5 Jahre, seit
+  Auflage) gegen deinen Ø Kaufkurs. In der Tiefe alle Käufe.
+- **Sparplan-Takt**: eine Perle pro Monat, gefüllt = Kauf erfasst. Farbig wird es, wenn eine fällige Rate fehlt oder
+  der Kontoauszug nicht zu den erfassten Käufen passt. In der Tiefe Käufe, Guthaben und Kontoauszug.
+- **Ziel** (Standard 100.000 € in 20 Jahren, im Fokus änderbar): mittlerer Verlauf gegen das Ziel, Chance in x von 10
+  Verläufen, nötige Monatsrate, Meilensteine und monatliche Entnahme als Anteil deiner Fixkosten.
+- **Was wäre wenn**: Sparrate, Laufzeit, jährliche Erhöhung, Rendite, Schwankung, Kosten, Inflation, Steuern
+  (vereinfacht) und Sonderzahlungen per Regler. Die Projektion zeigt mittleren Verlauf und Bandbreite aus 600 simulierten
+  Börsenverläufen, dazu drei Szenarien (4 / 7 / 9 % p. a.) und den **ETF-Baukasten**, in dem du weitere ETFs
+  hypothetisch dazunimmst (MSCI World, Schwellenländer, S&P 500, Nasdaq 100, Small Cap Value, Technologie, Gold,
+  Geldmarkt oder frei gesucht).
+- **Live-Kurse** kommen über den lokalen Server von Yahoo Finance (Xetra, verzögert), werden in der Datenbank
+  zwischengespeichert und jede Minute aktualisiert. Ohne Internet rechnet die App mit dem letzten gespeicherten Stand
+  bzw. dem letzten Kaufkurs.
+
+![Sparplan: Fokus Ziel](docs/sparplan-ziel.png)
 
 Alle Einstellungen werden automatisch gespeichert. Die Projektion ist eine Modellrechnung, keine Prognose.
 
@@ -175,7 +189,9 @@ finanzen/
   analytics.py  Aggregationen für die Dashboards
   depot.py      ETF-Depot, Sparplan-Einstellungen, Kursabruf mit Zwischenspeicher
   server.py     JSON-API und Auslieferung der Oberfläche
-  static/       Web-Oberfläche (HTML/CSS/JS, ECharts); sparplan-model.js = Rechenmodell der Projektion
+  static/       Web-Oberfläche (HTML/CSS/JS, ECharts, Motion)
+                ui-core.js = Zoomstufen, Breadcrumb, Esc, Äquivalente · sparplan-model.js = Projektion
+DESIGN.md       verbindliche Gestaltungsregeln
 scripts/        PowerShell-Watcher, Autostart, Demo-Daten
 tests/          python -m unittest discover -s tests
 ```

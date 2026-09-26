@@ -50,57 +50,8 @@ function toast(message, { error = false, action, timeout = 5000 } = {}) {
 }
 
 // ------------------------------------------------------------------ Theme
-// Kategorie-Farben werden in der hellen Variante gespeichert; im Dunkelmodus
-// wird jeder Palettenplatz auf seine eigene, für dunkle Flächen gewählte Stufe gemappt.
-const LIGHT_SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
-const DARK_SERIES = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"];
-const isDark = () => {
-  const t = document.documentElement.dataset.theme;
-  return t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
-};
-const catColor = (hex) => {
-  const i = LIGHT_SERIES.indexOf((hex || "").toLowerCase());
-  return i >= 0 && isDark() ? DARK_SERIES[i] : hex || css("--neutral");
-};
+// Graustufen als Normalfall (DESIGN.md); Farben für Abweichungen liefert UI.theme().
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-
-function theme() {
-  return {
-    surface: css("--surface-1"), surface2: css("--surface-2"), text: css("--text-primary"), text2: css("--text-secondary"),
-    muted: css("--axis-muted"), grid: css("--grid"), baseline: css("--baseline"), good: css("--good"),
-    series: Array.from({ length: 8 }, (_, i) => css(`--series-${i + 1}`)), neutral: css("--neutral"),
-    seq: css("--seq").split(",").map((s) => s.trim()),
-  };
-}
-
-function baseOption(t) {
-  return {
-    backgroundColor: "transparent",
-    textStyle: { fontFamily: css("--font"), color: t.text2 },
-    animationDuration: 500,
-    tooltip: {
-      backgroundColor: t.surface, borderColor: t.grid, borderWidth: 1, padding: [8, 12],
-      textStyle: { color: t.text, fontSize: 12.5 }, extraCssText: "box-shadow: 0 6px 20px rgba(0,0,0,.14); border-radius: 8px;",
-    },
-    legend: { top: 0, left: 0, icon: "roundRect", itemWidth: 12, itemHeight: 12, itemGap: 16, textStyle: { color: t.text2, fontSize: 12.5 } },
-  };
-}
-const valueAxis = (t, extra = {}) => ({
-  type: "value",
-  axisLabel: { color: t.muted, fontSize: 11.5, formatter: moneyAxis },
-  splitLine: { lineStyle: { color: t.grid, width: 1, type: "solid" } },
-  axisLine: { show: false }, axisTick: { show: false },
-  ...extra,
-});
-const categoryAxis = (t, data, extra = {}) => ({
-  type: "category", data,
-  axisLabel: { color: t.muted, fontSize: 11.5 },
-  axisLine: { lineStyle: { color: t.baseline } }, axisTick: { show: false },
-  ...extra,
-});
-const swatch = (color) => `<span class="dot" style="background:${color}"></span>`;
-const tipRow = (color, label, value) =>
-  `<div style="display:flex;gap:10px;justify-content:space-between;align-items:center"><span style="display:flex;gap:6px;align-items:center">${swatch(color)}${esc(label)}</span><b style="font-variant-numeric:tabular-nums">${value}</b></div>`;
 
 // ------------------------------------------------------------------ Zustand
 const state = {
@@ -112,7 +63,7 @@ const state = {
   status: null,
   categories: [],
   cats: new Map(),
-  dash: null,
+  returnTo: null, // Zoomstufe, aus der in eine Werkzeug-Ansicht gesprungen wurde (Esc führt zurück)
   tx: { items: [], total: 0, offset: 0, selected: new Set() },
 };
 
@@ -155,7 +106,8 @@ function saveUrl() {
   const p = new URLSearchParams({ period: state.period });
   if (state.period === "custom") { p.set("from", state.from); p.set("to", state.to); }
   if (state.account) p.set("account", state.account);
-  history.replaceState(null, "", `?${p}#${state.view}`);
+  const hash = state.view === "dashboard" && zoom.level > 1 ? zoom.hash() : state.view;
+  history.replaceState(null, "", `?${p}#${hash}`);
 }
 
 // ------------------------------------------------------------------ Navigation
@@ -163,8 +115,10 @@ function showView(view) {
   state.view = view;
   $$(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.view === view)));
   $$(".view").forEach((v) => (v.hidden = v.id !== `view-${view}`));
-  $("#filterbar").hidden = !["dashboard", "transactions"].includes(view);
+  $("#filterbar").hidden = view !== "transactions";
+  if (view === "dashboard") state.returnTo = null;
   saveUrl();
+  renderAppCrumbs();
   refreshCurrent();
 }
 
@@ -210,379 +164,576 @@ const catName = (id) => {
   return p ? `${p.name} › ${c.name}` : c.name;
 };
 
-// ------------------------------------------------------------------ Dashboard
-const charts = new Map();
-function chartFor(card) {
-  const el = $(`[data-card="${card}"] .chart`);
-  let chart = charts.get(card);
-  if (!chart || chart.isDisposed()) {
-    chart = echarts.init(el, null, { renderer: "svg" });
-    charts.set(card, chart);
-    new ResizeObserver(() => chart.resize()).observe(el);
+// ------------------------------------------------------------------ Dashboard: drei Zoomstufen (DESIGN.md)
+// Blick = vier Kacheln mit Metapher und Soll/Ist · Fokus = ein Element mit Trend und Vergleich · Tiefe = Tabellen.
+const dash = { m: null, cur: null, year: null, depot: null, ym: null, ref: null, selectedCat: null };
+const eurOf = (cents) => (cents || 0) / 100;
+const daysIn = (ym) => new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate();
+const shiftMonth = (ym, n) => {
+  const d = new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1 + n, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+const TOLERANCE = 0.05; // Abweichungen unter 5 % bleiben grau – sonst ist alles rot und nichts wichtig
+
+async function loadDepotSummary() {
+  try {
+    const d = await api("GET", "/api/depot");
+    const plan = d.settings.plan;
+    let quote = null;
+    try { quote = await api("GET", `/api/quotes/chart?symbol=${encodeURIComponent(plan.symbol)}&range=5d&interval=1d`); } catch { /* offline */ }
+    let shares = 0, invested = 0, value = 0;
+    const bySymbol = {};
+    for (const t of d.transactions) {
+      const s = (bySymbol[t.symbol] ||= { shares: 0, last: 0 });
+      s.shares += t.shares;
+      s.last = t.amount / 100 / t.shares;
+      shares += t.shares;
+      invested += t.amount / 100;
+    }
+    for (const [sym, s] of Object.entries(bySymbol)) value += s.shares * (sym === plan.symbol && quote?.price ? quote.price : s.last);
+    return { invested, value, rate: plan.rate, live: !!quote?.price && !quote.stale, count: d.transactions.length };
+  } catch {
+    return null;
   }
+}
+
+async function loadDashboard() {
+  try {
+    const m = await UI.loadMeasures();
+    const ym = m.ref.slice(0, 7);
+    const curTo = `${ym}-${String(daysIn(ym)).padStart(2, "0")}`;
+    const [cur, year, depot] = await Promise.all([
+      api("GET", `/api/dashboard?from=${ym}-01&to=${curTo}`),
+      api("GET", `/api/dashboard?from=${shiftMonth(ym, -12)}-01&to=${curTo}`),
+      loadDepotSummary(),
+    ]);
+    Object.assign(dash, { m, cur, year, depot, ym, ref: m.ref });
+    renderBlick();
+    if (zoom.level > 1) await zoom.refresh();
+  } catch (e) {
+    toast(`Übersicht konnte nicht geladen werden: ${e.message}`, { error: true });
+  }
+}
+
+/** Alle Soll/Ist-Größen der Übersicht an einer Stelle. */
+function calc() {
+  const { m, cur, year, ym, ref } = dash;
+  const empty = !cur || cur.empty;
+  const days = daysIn(ym), day = +ref.slice(8, 10);
+  const progress = day / days;
+  const sollMonth = m.soll.monthly_expense ? eurOf(m.soll.monthly_expense) : null;
+  const fixedPart = sollMonth ? Math.min(eurOf(m.avg_fixed), sollMonth) : 0;
+  // Fixkosten fallen am Monatsanfang an, der Rest verteilt sich gleichmäßig
+  const sollToDate = sollMonth != null ? fixedPart + (sollMonth - fixedPart) * progress : null;
+  const ist = empty ? 0 : eurOf(cur.kpis.expense);
+  const forecast = sollMonth != null ? ist + (sollMonth - fixedPart) * (1 - progress) : null;
+
+  const full = empty ? [] : year.monthly.filter((x) => x.month < ym);
+  const income = full.reduce((s, x) => s + eurOf(x.income), 0);
+  const expense = full.reduce((s, x) => s + eurOf(x.expense), 0);
+  const rate = income > 0 ? ((income - expense) / income) * 100 : null;
+  const sollRate = m.soll.savings_rate ?? 20;
+
+  const cats = [];
+  if (!empty) {
+    const seen = new Set();
+    const add = (id, name, istCents) => {
+      const c = state.cats.get(id);
+      const sollCents = c?.budget || m.category_avg[String(id)] || null;
+      const soll = sollCents ? eurOf(sollCents) : null;
+      const fixed = !!c?.fixed;
+      const toDate = soll != null ? (fixed ? soll : soll * progress) : null;
+      const i = eurOf(istCents);
+      cats.push({ id, name, ist: i, soll, toDate, fixed, source: c?.budget ? "Budget" : soll != null ? "Ø 6 Monate" : "–",
+        dev: toDate != null ? i - toDate : null, over: toDate != null && i > toDate * (1 + TOLERANCE) && i - toDate >= 5,
+        children: cur.categories.find((x) => x.id === id)?.children || [] });
+      seen.add(id);
+    };
+    for (const c of cur.categories) add(c.id, c.name, c.amount);
+    for (const c of state.categories) {
+      if (c.parent_id || c.kind !== "expense" || seen.has(c.id)) continue;
+      if (c.budget || m.category_avg[String(c.id)]) add(c.id, c.name, 0);
+    }
+    cats.sort((a, b) => (b.dev ?? -Infinity) - (a.dev ?? -Infinity));
+  }
+  return { empty, days, day, progress, sollMonth, fixedPart, sollToDate, ist, forecast, full, income, expense, rate, sollRate, cats };
+}
+
+const context = () => (dash.ref ? `Stand ${dateDe(dash.ref)} · ${monthLong(dash.ym)}` : "");
+
+function tile(key, { q, verdict, cls = "", metaphor, facts }) {
+  return `<div class="blick-tile" role="button" tabindex="0" data-key="${key}" aria-label="${esc(q)}: ${esc(verdict.replace(/<[^>]+>/g, ""))}. Öffnen">
+    <span class="q">${esc(q)}</span><span class="more-hint" aria-hidden="true">Fokus ↗</span>
+    <span class="verdict ${cls}">${verdict}</span>
+    <div class="metaphor">${metaphor}</div>
+    <div class="facts">${facts.map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join("")}</div>
+  </div>`;
+}
+
+function renderBlick() {
+  const c = calc();
+  $("#context").textContent = context();
+  const noData = `<span class="muted">Noch keine Umsätze – <a href="#import">CSV importieren</a></span>`;
+  const tiles = [];
+
+  // 1 · Ausgaben: Monatsweg
+  if (c.empty || c.sollMonth == null) {
+    tiles.push(tile("ausgaben", { q: "Ausgaben im Monat", verdict: c.empty ? "Keine Daten" : `${money0(c.ist * 100)} ausgegeben`, metaphor: c.empty ? noData : UI.track({ value: c.ist, max: c.ist || 1 }),
+      facts: [["Soll", "noch kein Maßstab"]] }));
+  } else {
+    const diff = c.ist - c.sollToDate;
+    const bad = diff > c.sollToDate * TOLERANCE;
+    tiles.push(tile("ausgaben", {
+      q: "Ausgaben im Monat",
+      verdict: bad ? `⚠ ${UI.money0(diff)} über Plan` : `${UI.money0(Math.abs(diff))} ${diff > 0 ? "über" : "unter"} Plan`,
+      cls: bad ? "bad" : "",
+      metaphor: UI.track({ value: c.ist, soll: c.sollToDate, max: Math.max(c.sollMonth, c.ist) * 1.02, bad, sollLabel: `Soll heute (Tag ${c.day})` }) +
+        `<span style="height:14px"></span>`,
+      facts: [["Ausgegeben", UI.amount(c.ist)], ["Soll bis heute", UI.money0(c.sollToDate)], ["Monats-Soll", `${UI.money0(c.sollMonth)} <small class="equiv">${esc(dash.m.soll.monthly_expense_source || "")}</small>`]],
+    }));
+  }
+
+  // 2 · Sparquote: Polster
+  if (c.rate == null) {
+    tiles.push(tile("sparquote", { q: "Sparquote 12 Monate", verdict: "Keine Einnahmen erfasst", metaphor: c.empty ? noData : `<span class="muted">Ohne Gehaltseingang keine Quote.</span>`, facts: [["Soll", UI.pct(c.sollRate)]] }));
+  } else {
+    const bad = c.rate < c.sollRate;
+    const surplus = c.income - c.expense;
+    tiles.push(tile("sparquote", {
+      q: `Sparquote · ${c.full.length} Monate`,
+      verdict: bad ? `⚠ ${UI.pct(c.rate)} statt ${UI.pct(c.sollRate)}` : `${UI.pct(c.rate)} – Soll ${UI.pct(c.sollRate)} erreicht`,
+      cls: bad ? "bad" : "",
+      metaphor: UI.track({ value: Math.max(0, c.rate), soll: c.sollRate, max: Math.max(c.rate, c.sollRate) * 1.25 || 30, bad, sollLabel: `Soll ${UI.pct(c.sollRate)}` }) + `<span style="height:14px"></span>`,
+      facts: [["Überschuss", UI.amount(surplus)], ["pro Monat", UI.money0(surplus / (c.full.length || 1))],
+        ["Soll-Überschuss", UI.money0((c.income * c.sollRate) / 100)]],
+    }));
+  }
+
+  // 3 · Kategorien: Ausreißer
+  const over = c.cats.filter((x) => x.over);
+  const shown = c.cats.filter((x) => x.toDate != null).slice(0, 3);
+  const maxRatio = Math.max(1.3, ...shown.map((x) => x.ist / (x.toDate || 1)));
+  tiles.push(tile("kategorien", {
+    q: "Kategorien im Monat",
+    verdict: c.empty ? "Keine Daten" : over.length ? `⚠ ${esc(over[0].name)} ${UI.money0(over[0].dev)} über Soll` : "Alle im Rahmen",
+    cls: over.length ? "bad" : "",
+    metaphor: c.empty ? noData : shown.map((x) => `<div class="mini-row"><span>${esc(x.name)}</span>${UI.track({ value: x.ist / x.toDate, soll: 1, max: maxRatio, bad: x.over, height: 8 })}</div>`).join(""),
+    facts: [["Über Soll", `${over.length} von ${c.cats.filter((x) => x.soll != null).length}`],
+      ...(over.length ? [["Summe drüber", UI.amount(over.reduce((s, x) => s + x.dev, 0))]] : [["Größter Posten", c.cats[0] ? `${esc(c.cats.slice().sort((a, b) => b.ist - a.ist)[0].name)}` : "–"]])],
+  }));
+
+  // 4 · Depot: Wasserlinie (führt in den Sparplan)
+  const d = dash.depot;
+  if (!d || !d.count) {
+    tiles.push(tile("depot", { q: "Depot & Sparplan", verdict: "Sparplan einrichten", metaphor: `<span class="muted">Käufe im Sparplan erfassen</span>`, facts: [] }));
+  } else {
+    const diff = d.value - d.invested;
+    tiles.push(tile("depot", {
+      q: "Depot & Sparplan",
+      verdict: diff >= 0 ? `${UI.signed(diff)} über Einzahlungen` : `⚠ ${UI.money0(-diff)} unter Einzahlungen`,
+      cls: diff < 0 ? "bad" : "",
+      metaphor: UI.track({ value: d.value, soll: d.invested, max: Math.max(d.value, d.invested) * 1.1, bad: diff < 0, sollLabel: "eingezahlt" }) + `<span style="height:14px"></span>`,
+      facts: [["Depotwert", UI.amount(d.value)], ["Eingezahlt", UI.money0(d.invested)], ["Sparplan", `${UI.money0(d.rate)} / Monat${d.live ? "" : ' <small class="equiv">ohne Live-Kurs</small>'}`]],
+    }));
+  }
+  $("#blick").innerHTML = tiles.join("");
+  const src = dash.m.soll;
+  $("#blick-foot").innerHTML = `Maßstäbe: Monats-Soll ${src.monthly_expense ? `${UI.money0(eurOf(src.monthly_expense))} (${esc(src.monthly_expense_source)})` : "–"} ·
+    Fixkosten ${src.fixed ? `${UI.money0(eurOf(src.fixed))} / Monat (${esc(src.fixed_source)})` : "unbekannt"} · Tagesbudget ${src.daily ? UI.money0(eurOf(src.daily)) : "–"}.
+    Kachel anklicken für den Fokus, <kbd>Esc</kbd> geht zurück.`;
+  const badge = $("#uncat-badge");
+  const uncat = dash.year && !dash.year.empty ? dash.year.kpis.uncategorized : 0;
+  badge.hidden = !uncat;
+  badge.textContent = uncat;
+  badge.title = `${uncat} Buchungen ohne Kategorie`;
+}
+
+// ---------- Diagramme in den Zoom-Ebenen
+const layerCharts = { 2: [], 3: [] };
+function mkChart(el, level) {
+  const chart = echarts.init(el, null, { renderer: "svg" });
+  layerCharts[level].push(chart);
   return chart;
 }
-
-// Jede Karte bekommt einen Umschalter Diagramm <-> Tabelle (Werte nie nur per Tooltip erreichbar).
-const tables = {};
-function setupTableToggles() {
-  $$(".card[data-card]").forEach((card) => {
-    const name = card.dataset.card;
-    if (["budgets", "largest"].includes(name)) return;
-    const btn = document.createElement("button");
-    btn.className = "ghost";
-    btn.textContent = "Tabelle";
-    btn.setAttribute("aria-pressed", "false");
-    const holder = document.createElement("div");
-    holder.className = "data-table";
-    holder.hidden = true;
-    card.append(holder);
-    btn.onclick = () => {
-      const on = btn.getAttribute("aria-pressed") !== "true";
-      btn.setAttribute("aria-pressed", String(on));
-      btn.textContent = on ? "Diagramm" : "Tabelle";
-      $(".chart", card).hidden = on;
-      holder.hidden = !on;
-      if (on) renderTable(name);
-      else charts.get(name)?.resize();
-    };
-    $("header", card).append(btn);
-  });
+function disposeCharts(level) {
+  layerCharts[level].forEach((c) => c.dispose());
+  layerCharts[level] = [];
 }
-function renderTable(name) {
-  const holder = $(`[data-card="${name}"] .data-table`);
-  if (!holder || holder.hidden || !tables[name]) return;
-  const { columns, rows } = tables[name]();
-  holder.innerHTML = `<table><thead><tr>${columns.map((c, i) => `<th${i ? ' class="num"' : ""}>${esc(c)}</th>`).join("")}</tr></thead>
-    <tbody>${rows.map((r) => `<tr>${r.map((v, i) => `<td${i ? ' class="num"' : ""}>${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
-}
+window.addEventListener("resize", () => [2, 3].forEach((l) => layerCharts[l].forEach((c) => c.resize())));
 
-let dashSeq = 0;
-async function loadDashboard() {
-  const seq = ++dashSeq;
-  $$("#view-dashboard .card").forEach((c) => c.classList.add("loading")); // alte Darstellung halten, kein Flackern
-  try {
-    const data = await api("GET", `/api/dashboard?${filterQuery()}`);
-    if (seq !== dashSeq) return;
-    state.dash = data;
-    $("#dash-empty").hidden = !data.empty;
-    $("#dash-content").hidden = !!data.empty;
-    if (data.empty) return;
-    renderDashboard(data);
-  } catch (e) {
-    toast(`Dashboard konnte nicht geladen werden: ${e.message}`, { error: true });
-  } finally {
-    $$("#view-dashboard .card").forEach((c) => c.classList.remove("loading"));
-  }
+const focusHead = (title, sub, bad) => `<div class="focus-head"><div><h1 class="${bad ? "bad" : ""}">${title}</h1><p>${sub}</p></div></div>`;
+const cmpRow = (k, v, s = "", bad = false) => `<div class="row"><span class="k">${k}</span><span class="v ${bad ? "sig-bad" : ""}">${v}</span>${s ? `<span class="s">${s}</span>` : ""}</div>`;
+const depthButton = `<div class="to-depth"><button type="button" class="primary" data-depth>Exakte Zahlen (Tiefe) ↘</button></div>`;
+function wireDepth(body, key) {
+  const b = body.querySelector("[data-depth]");
+  if (b) b.onclick = () => zoom.open(key, 3, b);
 }
+const monthAxis = (t, months, extra = {}) => ({
+  type: "category", data: months.map(monthLabel), axisLabel: { color: t.muted, fontSize: 11.5 },
+  axisLine: { lineStyle: { color: t.baseline } }, axisTick: { show: false }, ...extra,
+});
 
-function renderDashboard(d) {
-  const t = theme();
-  renderKpis(d, t);
-  renderMonthly(d, t);
-  renderCategoryBars(d, t);
-  renderSankey(d, t);
-  renderStacked(d, t);
-  renderBudgets(d);
-  renderBalance(d, t);
-  renderPartners(d, t);
-  renderCalendar(d, t);
-  renderLargest(d);
-  Object.keys(tables).forEach(renderTable);
-}
+// ---------- Ausgaben
+function focusAusgaben(body) {
+  disposeCharts(2);
+  const c = calc();
+  const t = UI.theme();
+  if (c.empty) { body.innerHTML = focusHead("Ausgaben", "Noch keine Umsätze importiert."); return; }
+  const diff = c.sollToDate != null ? c.ist - c.sollToDate : null;
+  const bad = diff != null && diff > c.sollToDate * TOLERANCE;
+  body.innerHTML = focusHead(
+    diff == null ? `${UI.money0(c.ist)} ausgegeben` : bad ? `⚠ ${UI.money0(diff)} über Plan` : `${UI.money0(Math.abs(diff))} ${diff > 0 ? "über" : "unter"} Plan`,
+    `${monthLong(dash.ym)}, Tag ${c.day} von ${c.days}. ${UI.amount(c.ist)} ausgegeben, Soll bis heute ${c.sollToDate != null ? UI.money0(c.sollToDate) : "–"}. Fixkosten zählen ab Monatsanfang voll, der Rest gleichmäßig.`, bad) +
+    `<div class="focus-grid">
+      <div class="compare-stack" style="display:flex;flex-direction:column;gap:16px;min-width:0">
+        <section class="focus-card"><h2>Vergleich: dieser Monat Tag für Tag</h2><p>Kumulierte Ausgaben gegen den Soll-Pfad und den Vormonat</p>
+          <div class="chart" id="f-cum" style="height:min(46vh,420px)"></div>
+          <div class="legend-inline"><span><i class="line"></i>${monthLong(dash.ym)}</span><span><i class="dash"></i>Soll-Pfad</span><span><i style="background:${t.ink3};height:2px"></i>Vormonat</span></div></section>
+        <section class="focus-card"><h2>Trend: 12 Monate</h2><p>Ausgaben pro Monat, gestrichelt das Monats-Soll. Farbig nur Monate deutlich über Soll.</p>
+          <div class="chart" id="f-trend" style="height:280px"></div></section>
+      </div>
+      <aside class="focus-card compare">
+        ${cmpRow("Bis heute", UI.money0(c.ist), `Soll ${c.sollToDate != null ? UI.money0(c.sollToDate) : "–"} · ${UI.equiv(c.ist)}`, bad)}
+        ${diff != null ? cmpRow(diff > 0 ? "Über Plan" : "Unter Plan", UI.money0(Math.abs(diff)), UI.equiv(diff), bad) : ""}
+        ${c.forecast != null ? cmpRow("Hochrechnung Monatsende", UI.money0(c.forecast), `wenn der Rest nach Plan läuft · Monats-Soll ${UI.money0(c.sollMonth)}`, c.forecast > c.sollMonth * (1 + TOLERANCE)) : ""}
+        ${cmpRow("Vormonat bis Tag " + c.day, UI.money0(eurOf(prevMonthToDay(c.day))), "gleicher Zeitraum im Vormonat")}
+        ${cmpRow("Ø letzte 6 Monate", dash.m.avg_expense ? UI.money0(eurOf(dash.m.avg_expense)) : "–", dash.m.avg_expense ? UI.equiv(eurOf(dash.m.avg_expense)) : "")}
+        ${depthButton}
+      </aside>
+    </div>`;
+  wireDepth(body, "ausgaben");
 
-function sparkline(values, color) {
-  if (values.length < 2) return "";
-  const w = 200, h = 34, pad = 3;
-  const min = Math.min(...values), max = Math.max(...values);
-  const span = max - min || 1;
-  const pts = values.map((v, i) => [pad + (i * (w - 2 * pad)) / (values.length - 1), h - pad - ((v - min) / span) * (h - 2 * pad)]);
-  const path = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join("");
-  const last = pts[pts.length - 1];
-  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
-    <path d="${path}" fill="none" stroke="${css("--baseline")}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
-    <circle cx="${last[0]}" cy="${last[1]}" r="3.5" fill="${color}" stroke="${css("--surface-1")}" stroke-width="2"/></svg>`;
-}
-
-function delta(current, previous, upIsGood) {
-  if (previous == null || previous === 0) return `<span>kein Vergleichszeitraum</span>`;
-  const change = ((current - previous) / Math.abs(previous)) * 100;
-  if (Math.abs(change) < 0.5) return `<span>≈ wie im Vorzeitraum</span>`;
-  const up = change > 0;
-  const cls = up === upIsGood ? (up ? "up-good" : "down-good") : up ? "up-bad" : "down-bad";
-  return `<span class="${cls}">${up ? "▲" : "▼"} ${pct.format(Math.abs(change))} %</span> ggü. Vorzeitraum`;
-}
-
-function renderKpis(d, t) {
-  const k = d.kpis, prev = k.prev || {};
-  const m = d.monthly;
-  const tiles = [
-    { label: "Einnahmen", value: money0(k.income), delta: delta(k.income, prev.income, true), spark: m.map((x) => x.income), color: t.series[0] },
-    { label: "Ausgaben", value: money0(k.expense), delta: delta(k.expense, prev.expense, false), spark: m.map((x) => x.expense), color: t.series[1] },
-    { label: "Überschuss", hero: true, value: money0(k.net), delta: delta(k.net, prev.net, true), spark: m.map((x) => x.net), color: k.net >= 0 ? t.good : css("--critical") },
-    {
-      label: "Sparquote", value: k.savings_rate == null ? "–" : `${pct.format(k.savings_rate)} %`,
-      delta: k.savings_rate == null && k.expense > k.income
-        ? `<span title="Die Ausgaben übersteigen die Einnahmen um mehr als das Doppelte – meist fehlt der Gehaltseingang im Export.">Zu wenig Einnahmen im Zeitraum</span>`
-        : `<span>Ø Ausgaben ${money0(k.avg_monthly_expense)} / Monat</span>`,
-      spark: m.map((x) => (x.income ? Math.max((x.net / x.income) * 100, -100) : 0)), color: t.series[2],
-    },
-  ];
-  $("#kpis").innerHTML = tiles.map((x) => `
-    <div class="kpi${x.hero ? " hero" : ""}">
-      <div class="label">${x.label}</div>
-      <div class="value">${x.value}</div>
-      <div class="delta">${x.delta}</div>
-      ${sparkline(x.spark, x.color)}
-    </div>`).join("");
-  const badge = $("#uncat-badge");
-  badge.hidden = !k.uncategorized;
-  badge.textContent = k.uncategorized;
-  badge.title = `${k.uncategorized} Buchungen ohne Kategorie`;
-}
-
-function renderMonthly(d, t) {
-  const months = d.range.months;
-  const chart = chartFor("monthly");
-  const net = d.monthly.map((x) => x.net / 100);
+  // Vergleich: kumuliert
+  const daily = new Map(dash.year.daily);
+  const cum = (ym, upTo) => {
+    let s = 0;
+    return Array.from({ length: upTo }, (_, i) => { s += eurOf(daily.get(`${ym}-${String(i + 1).padStart(2, "0")}`) || 0); return Math.round(s * 100) / 100; });
+  };
+  const cur = cum(dash.ym, c.day);
+  const prevYm = shiftMonth(dash.ym, -1);
+  const prev = cum(prevYm, daysIn(prevYm)).slice(0, c.days);
+  const path = c.sollMonth != null ? Array.from({ length: c.days }, (_, i) => c.fixedPart + (c.sollMonth - c.fixedPart) * ((i + 1) / c.days)) : [];
+  const days = Array.from({ length: c.days }, (_, i) => i + 1);
+  const chart = mkChart($("#f-cum", body), 2);
   chart.setOption({
-    ...baseOption(t),
-    grid: { left: 8, right: 12, top: 36, bottom: 4, containLabel: true },
-    tooltip: {
-      ...baseOption(t).tooltip, trigger: "axis", axisPointer: { type: "shadow", shadowStyle: { color: t.grid, opacity: 0.35 } },
-      formatter: (ps) => `<div style="margin-bottom:4px;font-weight:600">${monthLong(months[ps[0].dataIndex])}</div>` +
-        ps.map((p) => tipRow(p.color, p.seriesName, eur.format(p.value))).join(""),
-    },
-    xAxis: categoryAxis(t, months.map(monthLabel)),
-    yAxis: valueAxis(t),
+    ...UI.chartBase(t),
+    xAxis: { type: "category", data: days, boundaryGap: false, axisLabel: { color: t.muted, fontSize: 11.5, formatter: (d) => `${d}.` }, axisLine: { lineStyle: { color: t.baseline } }, axisTick: { show: false } },
+    yAxis: UI.valueAxis(t),
+    tooltip: { ...UI.chartBase(t).tooltip, formatter: (ps) => {
+      const i = ps[0].dataIndex;
+      return `<b>${i + 1}. ${monthLong(dash.ym).split(" ")[0]}</b>` +
+        (cur[i] != null ? UI.tipRow(UI.mark(t.ink1), "Dieser Monat", money0(cur[i] * 100)) : "") +
+        (path[i] != null ? UI.tipRow(UI.mark(t.ink2, true), "Soll-Pfad", money0(path[i] * 100)) : "") +
+        (prev[i] != null ? UI.tipRow(UI.mark(t.ink3), "Vormonat", money0(prev[i] * 100)) : "");
+    } },
     series: [
-      { name: "Einnahmen", type: "bar", data: d.monthly.map((x) => x.income / 100), itemStyle: { color: t.series[0], borderRadius: [4, 4, 0, 0] }, barMaxWidth: 22, barGap: "12%" },
-      { name: "Ausgaben", type: "bar", data: d.monthly.map((x) => x.expense / 100), itemStyle: { color: t.series[1], borderRadius: [4, 4, 0, 0] }, barMaxWidth: 22 },
-      {
-        name: "Überschuss", type: "line", data: net, symbol: "circle", symbolSize: 8, showSymbol: months.length <= 18,
-        lineStyle: { width: 2, color: t.text2 }, itemStyle: { color: t.text2, borderColor: t.surface, borderWidth: 2 },
-        z: 5,
-      },
+      { name: "Vormonat", type: "line", data: prev, showSymbol: false, lineStyle: { width: 2, color: t.ink3 }, itemStyle: { color: t.ink3 } },
+      { name: "Soll-Pfad", type: "line", data: path, showSymbol: false, lineStyle: { width: 1.5, type: "dashed", color: t.ink2 }, itemStyle: { color: t.ink2 } },
+      { name: "Dieser Monat", type: "line", data: cur, showSymbol: false, z: 5, lineStyle: { width: 2.5, color: bad ? t.bad : t.ink1 }, itemStyle: { color: bad ? t.bad : t.ink1 },
+        endLabel: { show: true, formatter: (p) => `${UI.moneyShort(p.value)}`, color: bad ? t.bad : t.text, fontWeight: 600 } },
     ],
-  }, true);
-  chart.off("click");
-  chart.on("click", (p) => {
-    const ym = months[p.dataIndex];
-    const last = new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0);
-    goToTransactions({ from: `${ym}-01`, to: iso(last), direction: p.seriesName === "Einnahmen" ? "in" : p.seriesName === "Ausgaben" ? "out" : "" });
+    grid: { ...UI.chartBase(t).grid, right: 70 },
   });
-  tables.monthly = () => ({
-    columns: ["Monat", "Einnahmen", "Ausgaben", "Überschuss"],
-    rows: d.monthly.map((x) => [monthLong(x.month), money(x.income), money(x.expense), money(x.net)]),
-  });
-}
 
-function renderCategoryBars(d, t) {
-  const cats = [...d.categories].slice(0, 12).reverse();
-  const chart = chartFor("categories");
-  $(`[data-card="categories"] .chart`).style.height = `${Math.max(240, cats.length * 34 + 24)}px`;
-  chart.resize();
-  chart.setOption({
-    ...baseOption(t),
-    grid: { left: 150, right: 118, top: 4, bottom: 4 },
-    tooltip: {
-      ...baseOption(t).tooltip, trigger: "item",
-      formatter: (p) => {
-        const c = cats[p.dataIndex];
-        return `<div style="font-weight:600;margin-bottom:4px">${esc(c.name)} · ${money(c.amount)}</div>` +
-          c.children.slice(0, 8).map((k) => tipRow(catColor(c.color), k.name, money(k.amount))).join("");
-      },
-    },
-    xAxis: { type: "value", show: false },
-    yAxis: categoryAxis(t, cats.map((c) => c.name), { axisLine: { show: false }, axisLabel: { color: t.text2, fontSize: 12.5, width: 140, overflow: "truncate" } }),
+  // Trend: 12 Monate
+  const months = dash.year.monthly.map((x) => x.month);
+  const values = dash.year.monthly.map((x) => eurOf(x.expense));
+  const trend = mkChart($("#f-trend", body), 2);
+  trend.setOption({
+    ...UI.chartBase(t),
+    xAxis: monthAxis(t, months),
+    yAxis: UI.valueAxis(t),
+    tooltip: { ...UI.chartBase(t).tooltip, axisPointer: { type: "shadow", shadowStyle: { color: t.grid, opacity: 0.4 } }, formatter: (ps) => {
+      const i = ps[0].dataIndex, v = values[i];
+      return `<b>${monthLong(months[i])}</b>${months[i] === dash.ym ? " · läuft" : ""}` + UI.tipRow(UI.mark(t.ink2), "Ausgaben", money0(v * 100)) +
+        (c.sollMonth ? UI.tipRow(UI.mark(t.ink1, true), "Soll", money0(c.sollMonth * 100)) + UI.tipRow("", "Abweichung", UI.signed(v - c.sollMonth)) : "") +
+        `<div style="color:${t.muted}">${UI.equiv(v)}</div>`;
+    } },
     series: [{
-      type: "bar", barMaxWidth: 18,
-      data: cats.map((c) => ({ value: c.amount / 100, itemStyle: { color: catColor(c.color), borderRadius: [0, 4, 4, 0] } })),
-      label: { show: true, position: "right", color: t.text2, fontSize: 12, formatter: (p) => `${moneyAxis(p.value)} · ${pct.format(cats[p.dataIndex].share)} %` },
-      cursor: "pointer",
+      type: "bar", barMaxWidth: 26,
+      data: values.map((v, i) => ({ value: v, itemStyle: { borderRadius: [4, 4, 0, 0],
+        color: months[i] === dash.ym ? t.ink4 : c.sollMonth && v > c.sollMonth * (1 + TOLERANCE) ? t.bad : t.ink3,
+        borderColor: months[i] === dash.ym ? t.ink3 : "transparent", borderType: "dashed" } })),
+      markLine: c.sollMonth ? { symbol: "none", silent: true, data: [{ yAxis: c.sollMonth }], lineStyle: { color: t.ink1, type: "dashed", width: 1.5 },
+        label: { formatter: `Soll ${UI.moneyShort(c.sollMonth)}`, color: t.text, position: "insideEndTop", fontSize: 11.5 } } : undefined,
     }],
-  }, true);
-  chart.off("click");
-  chart.on("click", (p) => goToTransactions({ category: cats[p.dataIndex].id, direction: "" }));
-  tables.categories = () => ({
-    columns: ["Kategorie", "Betrag", "Anteil"],
-    rows: d.categories.flatMap((c) => [[c.name, money(c.amount), `${pct.format(c.share)} %`],
-      ...c.children.map((k) => [`   › ${k.name}`, money(k.amount), ""])]),
   });
+  trend.on("click", (p) => openTransactions({ month: months[p.dataIndex], direction: "out" }));
 }
 
-function renderSankey(d, t) {
-  const chart = chartFor("sankey");
-  const { nodes, links } = d.sankey;
-  const total = links.filter((l) => l.target === "Verfügbar").reduce((s, l) => s + l.value, 0);
-  chart.setOption({
-    ...baseOption(t),
-    tooltip: {
-      ...baseOption(t).tooltip, trigger: "item",
-      formatter: (p) => p.dataType === "edge"
-        ? `${esc(p.data.source)} → ${esc(p.data.target)}<br><b>${money(p.data.value)}</b> · ${pct.format((p.data.value / total) * 100)} %`
-        : `<b>${esc(p.name)}</b><br>${money(p.value)}`,
-    },
-    series: [{
-      type: "sankey", left: 8, right: 230, top: 8, bottom: 8, nodeWidth: 12, nodeGap: 14, draggable: false,
-      layoutIterations: 64, emphasis: { focus: "adjacency" },
-      data: nodes.map((n) => ({ name: n.name, itemStyle: { color: n.name === "Verfügbar" ? t.muted : catColor(n.color), borderWidth: 0 } })),
-      links: links.map((l) => ({ ...l, value: l.value })),
-      lineStyle: { color: "target", opacity: 0.22, curveness: 0.5 },
-      label: { color: t.text, fontSize: 12.5, formatter: (p) => `${p.name}  {v|${money0(p.value)}}`, rich: { v: { color: t.muted, fontSize: 11.5 } } },
-    }],
-  }, true);
-  tables.sankey = () => ({ columns: ["Von → Nach", "Betrag"], rows: links.map((l) => [`${l.source} → ${l.target}`, money(l.value)]) });
+function prevMonthToDay(day) {
+  const prevYm = shiftMonth(dash.ym, -1);
+  let s = 0;
+  for (const [d, v] of dash.year.daily) if (d.startsWith(prevYm) && +d.slice(8, 10) <= day) s += v;
+  return s;
 }
 
-function renderStacked(d, t) {
-  const months = d.range.months;
-  const chart = chartFor("stacked");
-  const last = d.stacked.length - 1;
-  chart.setOption({
-    ...baseOption(t),
-    legend: { ...baseOption(t).legend, type: "scroll" },
-    grid: { left: 8, right: 12, top: 40, bottom: 4, containLabel: true },
-    tooltip: {
-      ...baseOption(t).tooltip, trigger: "axis", axisPointer: { type: "shadow", shadowStyle: { color: t.grid, opacity: 0.35 } },
-      formatter: (ps) => {
-        const sum = ps.reduce((s, p) => s + (p.value || 0), 0);
-        return `<div style="margin-bottom:4px;font-weight:600">${monthLong(months[ps[0].dataIndex])} · ${eur.format(sum)}</div>` +
-          [...ps].reverse().filter((p) => p.value).map((p) => tipRow(p.color, p.seriesName, eur.format(p.value))).join("");
-      },
-    },
-    xAxis: categoryAxis(t, months.map(monthLabel)),
-    yAxis: valueAxis(t),
-    series: d.stacked.map((s, i) => ({
-      name: s.name, type: "bar", stack: "total", barMaxWidth: 24,
-      data: s.values.map((v) => v / 100),
-      // 1px Rand in Flächenfarbe ergibt die 2px-Lücke zwischen gestapelten Segmenten
-      itemStyle: { color: catColor(s.color), borderColor: t.surface, borderWidth: 1, borderRadius: i === last ? [4, 4, 0, 0] : 0 },
-      emphasis: { focus: "series" },
-    })),
-  }, true);
-  chart.off("click");
-  chart.on("click", (p) => {
-    const s = d.stacked[p.seriesIndex];
-    if (s.id < 0) return;
-    const ym = months[p.dataIndex];
-    goToTransactions({ from: `${ym}-01`, to: iso(new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0)), category: s.id, direction: "" });
-  });
-  tables.stacked = () => ({
-    columns: ["Monat", ...d.stacked.map((s) => s.name)],
-    rows: months.map((m, i) => [monthLong(m), ...d.stacked.map((s) => money(s.values[i]))]),
-  });
-}
-
-function renderBudgets(d) {
-  const box = $(`[data-card="budgets"] .budgets`);
-  const n = d.range.months.length;
-  $("#budget-sub").textContent = n === 1 ? `Verbrauch ${monthLong(d.range.months[0])}` : `Verbrauch in ${n} Monaten (Monatsbudget × ${n})`;
-  if (!d.budgets.length) {
-    box.innerHTML = `<p class="empty-note">Noch keine Budgets.<br>Lege unter <a href="#categories">Kategorien</a> ein Monatsbudget fest.</p>`;
-    return;
-  }
-  box.innerHTML = d.budgets.map((b) => {
-    const ratio = b.spent / b.budget;
-    const cls = ratio > 1 ? "over" : ratio > 0.85 ? "warn" : "";
-    const state = ratio > 1 ? `⚠ ${money0(b.spent - b.budget)} über Budget` : ratio > 0.85 ? `! Noch ${money0(b.budget - b.spent)} übrig` : `Noch ${money0(b.budget - b.spent)} übrig`;
-    return `<div class="budget ${cls}">
-      <div class="row"><span class="name">${swatch(catColor(b.color))}${esc(b.name)}</span>
-      <span class="nums">${money0(b.spent)} / ${money0(b.budget)}</span></div>
-      <div class="track" role="meter" aria-valuemin="0" aria-valuemax="${b.budget}" aria-valuenow="${b.spent}" aria-label="${esc(b.name)}">
-        <div class="fill" style="width:${Math.min(ratio, 1) * 100}%"></div></div>
-      <div class="state">${state} · ${pct.format(ratio * 100)} %</div></div>`;
+function depthAusgaben(body) {
+  disposeCharts(3);
+  const c = calc();
+  const rows = dash.year.monthly.map((x) => {
+    const v = eurOf(x.expense);
+    const dev = c.sollMonth != null ? v - c.sollMonth : null;
+    const over = dev != null && dev > c.sollMonth * TOLERANCE && x.month !== dash.ym;
+    return `<tr class="${over ? "bad" : ""}" data-month="${x.month}" style="cursor:pointer"><td>${monthLong(x.month)}${x.month === dash.ym ? " (läuft)" : ""}</td>
+      <td class="num">${money(x.expense)}</td><td class="num">${c.sollMonth != null ? money(c.sollMonth * 100) : "–"}</td>
+      <td class="num dev">${dev != null ? UI.signed(dev, UI.money) : "–"}</td><td class="num equiv">${UI.equiv(v)}</td></tr>`;
   }).join("");
+  const cur = dash.cur;
+  body.innerHTML = focusHead("Ausgaben – exakte Zahlen", `Monatswerte der letzten 13 Monate, größte Ausgaben und Empfänger im ${monthLong(dash.ym)}. Zeile anklicken öffnet die Umsätze.`) +
+    `<div class="depth-grid"><div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+      <section class="focus-card scroll-x"><h2>Monate</h2><table class="depth-table" id="d-months"><thead><tr><th>Monat</th><th class="num">Ausgaben</th><th class="num">Soll</th><th class="num">Abweichung</th><th class="num">Alltagsäquivalent</th></tr></thead><tbody>${rows}</tbody></table></section>
+      <section class="focus-card scroll-x"><h2>Größte Ausgaben ${monthLong(dash.ym)}</h2><table class="depth-table"><thead><tr><th>Datum</th><th>Empfänger</th><th>Kategorie</th><th class="num">Betrag</th><th class="num">Alltagsäquivalent</th></tr></thead><tbody>
+        ${(cur.largest || []).map((x) => `<tr><td>${dateDe(x.date)}</td><td>${esc(x.counterparty || x.purpose || "–")}</td><td>${esc(catName(x.category_id))}</td><td class="num">${money(x.amount)}</td><td class="num equiv">${UI.equiv(eurOf(x.amount))}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">Keine Ausgaben.</td></tr>`}</tbody></table></section>
+      <section class="focus-card scroll-x"><h2>Empfänger ${monthLong(dash.ym)}</h2><table class="depth-table"><thead><tr><th>Empfänger</th><th class="num">Buchungen</th><th class="num">Betrag</th><th class="num">Alltagsäquivalent</th></tr></thead><tbody>
+        ${(cur.top_partners || []).map((x) => `<tr><td>${esc(x.name)}</td><td class="num">${x.count}</td><td class="num">${money(x.amount)}</td><td class="num equiv">${UI.equiv(eurOf(x.amount))}</td></tr>`).join("") || `<tr><td colspan="4" class="muted">–</td></tr>`}</tbody></table></section>
+    </div>
+    <aside class="focus-card">${measuresForm()}
+      <div class="to-depth"><button type="button" id="d-tx">Alle Umsätze ${monthLong(dash.ym)} →</button></div></aside></div>`;
+  $("#d-months", body).onclick = (e) => { const tr = e.target.closest("tr[data-month]"); if (tr) openTransactions({ month: tr.dataset.month, direction: "out" }); };
+  $("#d-tx", body).onclick = () => openTransactions({ month: dash.ym, direction: "out" });
+  wireMeasuresForm(body);
 }
 
-function renderBalance(d, t) {
-  const chart = chartFor("balance");
-  const data = d.balance.map(([day, v]) => [day, v / 100]);
+/** Formular für die Maßstäbe (Soll-Werte und Grundlage der Äquivalente). */
+function measuresForm() {
+  const tg = dash.m.targets || {};
+  const v = (cents) => (cents ? (cents / 100).toFixed(0) : "");
+  return `<form class="form-grid" id="measures-form"><h2 style="font-size:14px;margin:0">Maßstäbe</h2>
+    <label>Monats-Soll Ausgaben in € <input name="monthly_expense" type="number" min="0" step="10" value="${v(tg.monthly_expense)}" placeholder="${dash.m.avg_expense ? `leer = Ø ${UI.money0(eurOf(dash.m.avg_expense))}` : "z. B. 2000"}"></label>
+    <label>Fixkosten pro Monat in € <input name="fixed" type="number" min="0" step="10" value="${v(tg.fixed)}" placeholder="${dash.m.avg_fixed ? `leer = Ø ${UI.money0(eurOf(dash.m.avg_fixed))}` : "z. B. 1200"}"></label>
+    <p class="hint">Grundlage für „Monate Fixkosten“. Welche Kategorien Fixkosten sind, legst du unter Kategorien fest.</p>
+    <label>Sparquote-Soll in % <input name="savings_rate" type="number" min="0" max="90" step="1" value="${tg.savings_rate ?? 20}"></label>
+    <button class="primary">Speichern</button></form>`;
+}
+function wireMeasuresForm(root) {
+  const f = $("#measures-form", root);
+  if (!f) return;
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const cents = (x) => (x.value === "" ? null : Math.round(parseFloat(x.value) * 100));
+    const targets = { ...dash.m.targets, monthly_expense: cents(f.monthly_expense), fixed: cents(f.fixed), savings_rate: f.savings_rate.value === "" ? 20 : +f.savings_rate.value };
+    try {
+      await api("PUT", "/api/depot/settings", { targets });
+      toast("Maßstäbe gespeichert");
+      await loadDashboard();
+    } catch (err) { toast(err.message, { error: true }); }
+  };
+}
+
+// ---------- Sparquote
+function focusSparquote(body) {
+  disposeCharts(2);
+  const c = calc();
+  const t = UI.theme();
+  if (c.rate == null) { body.innerHTML = focusHead("Sparquote", "Im Zeitraum sind keine Einnahmen erfasst – meist fehlt der Gehaltseingang im Export."); return; }
+  const bad = c.rate < c.sollRate;
+  const surplus = c.income - c.expense;
+  const sollSurplus = (c.income * c.sollRate) / 100;
+  const gap = surplus - sollSurplus;
+  const n = c.full.length || 1;
+  body.innerHTML = focusHead(bad ? `⚠ Sparquote ${UI.pct(c.rate)} statt ${UI.pct(c.sollRate)}` : `Sparquote ${UI.pct(c.rate)} – Soll erreicht`,
+    `Letzte ${c.full.length} vollen Monate. ${bad ? `Pro Monat fehlen ${UI.amount(-gap / n)} zum Soll.` : `Pro Monat ${UI.amount(gap / n)} mehr als das Soll.`}`, bad) +
+    `<div class="focus-grid"><div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+      <section class="focus-card"><h2>Trend: Sparquote pro Monat</h2><p>Gestrichelt das Soll, farbig die Monate darunter</p><div class="chart" id="f-rate" style="height:min(42vh,380px)"></div></section>
+      <section class="focus-card"><h2>Vergleich: Überschuss aufsummiert</h2><p>Was du zurückgelegt hast gegen das, was das Soll vorsieht</p><div class="chart" id="f-cumsurplus" style="height:280px"></div>
+        <div class="legend-inline"><span><i class="line"></i>Überschuss</span><span><i class="dash"></i>Soll-Überschuss</span></div></section>
+    </div><aside class="focus-card compare">
+      ${cmpRow("Sparquote", UI.pct(c.rate), `Soll ${UI.pct(c.sollRate)}`, bad)}
+      ${cmpRow("Überschuss", UI.money0(surplus), UI.equiv(surplus))}
+      ${cmpRow("Soll-Überschuss", UI.money0(sollSurplus), UI.equiv(sollSurplus))}
+      ${cmpRow(gap >= 0 ? "Mehr als Soll" : "Fehlt zum Soll", UI.money0(Math.abs(gap)), UI.equiv(gap), gap < 0)}
+      ${cmpRow("Ø Einnahmen / Monat", UI.money0(c.income / n))}
+      ${cmpRow("Ø Ausgaben / Monat", UI.money0(c.expense / n), UI.equiv(c.expense / n))}
+      ${depthButton}</aside></div>`;
+  wireDepth(body, "sparquote");
+  const months = c.full.map((x) => x.month);
+  const rates = c.full.map((x) => (x.income > 0 ? Math.max(-100, ((x.income - x.expense) / x.income) * 100) : null));
+  const chart = mkChart($("#f-rate", body), 2);
   chart.setOption({
-    ...baseOption(t),
-    grid: { left: 8, right: 64, top: 16, bottom: 4, containLabel: true },
-    tooltip: {
-      ...baseOption(t).tooltip, trigger: "axis", axisPointer: { type: "line", lineStyle: { color: t.baseline } },
-      formatter: (ps) => `<div style="font-weight:600;margin-bottom:4px">${dateDe(ps[0].value[0])}</div>${tipRow(t.series[0], "Stand", eur.format(ps[0].value[1]))}`,
-    },
-    xAxis: { type: "time", axisLabel: { color: t.muted, fontSize: 11.5, formatter: { month: "{MMM}", year: "{yyyy}" } }, axisLine: { lineStyle: { color: t.baseline } }, axisTick: { show: false }, splitLine: { show: false } },
-    yAxis: valueAxis(t, { scale: true }),
-    series: [{
-      type: "line", data, showSymbol: false, symbolSize: 8, lineStyle: { width: 2, color: t.series[0] },
-      itemStyle: { color: t.series[0], borderColor: t.surface, borderWidth: 2 },
-      areaStyle: { color: t.series[0], opacity: 0.1 },
-      endLabel: { show: true, formatter: (p) => moneyAxis(p.value[1]), color: t.text2, fontSize: 11.5 },
-    }],
-  }, true);
-  tables.balance = () => ({ columns: ["Datum", "Stand"], rows: d.balance.map(([day, v]) => [dateDe(day), money(v)]) });
+    ...UI.chartBase(t),
+    xAxis: monthAxis(t, months),
+    yAxis: UI.valueAxis(t, (v) => `${v} %`),
+    tooltip: { ...UI.chartBase(t).tooltip, axisPointer: { type: "shadow", shadowStyle: { color: t.grid, opacity: 0.4 } }, formatter: (ps) => {
+      const i = ps[0].dataIndex, x = c.full[i];
+      return `<b>${monthLong(months[i])}</b>` + UI.tipRow(UI.mark(t.ink2), "Sparquote", rates[i] == null ? "–" : UI.pct(rates[i])) +
+        UI.tipRow("", "Überschuss", money0(x.net)) + UI.tipRow(UI.mark(t.ink1, true), "Soll", UI.pct(c.sollRate));
+    } },
+    series: [{ type: "bar", barMaxWidth: 26,
+      data: rates.map((v) => ({ value: v, itemStyle: { color: v != null && v < c.sollRate ? t.bad : t.ink3, borderRadius: v >= 0 ? [4, 4, 0, 0] : [0, 0, 4, 4] } })),
+      markLine: { symbol: "none", silent: true, data: [{ yAxis: c.sollRate }], lineStyle: { color: t.ink1, type: "dashed", width: 1.5 },
+        label: { formatter: `Soll ${UI.pct(c.sollRate)}`, color: t.text, position: "insideEndTop", fontSize: 11.5 } } }],
+  });
+  let s = 0, ss = 0;
+  const cumS = c.full.map((x) => (s += eurOf(x.net)));
+  const cumSoll = c.full.map((x) => (ss += (eurOf(x.income) * c.sollRate) / 100));
+  const cmp = mkChart($("#f-cumsurplus", body), 2);
+  cmp.setOption({
+    ...UI.chartBase(t),
+    xAxis: monthAxis(t, months, { boundaryGap: false }),
+    yAxis: UI.valueAxis(t),
+    tooltip: { ...UI.chartBase(t).tooltip, formatter: (ps) => {
+      const i = ps[0].dataIndex;
+      return `<b>bis ${monthLong(months[i])}</b>` + UI.tipRow(UI.mark(t.ink1), "Überschuss", money0(cumS[i] * 100)) +
+        UI.tipRow(UI.mark(t.ink2, true), "Soll", money0(cumSoll[i] * 100)) + `<div style="color:${t.muted}">${UI.equiv(cumS[i])}</div>`;
+    } },
+    series: [
+      { type: "line", data: cumSoll, showSymbol: false, lineStyle: { width: 1.5, type: "dashed", color: t.ink2 } },
+      { type: "line", data: cumS, showSymbol: false, lineStyle: { width: 2.5, color: bad ? t.bad : t.ink1 }, areaStyle: { color: t.ink4, opacity: 0.6 },
+        endLabel: { show: true, formatter: (p) => UI.moneyShort(p.value), color: t.text, fontWeight: 600 } },
+    ],
+    grid: { ...UI.chartBase(t).grid, right: 70 },
+  });
 }
 
-function renderPartners(d, t) {
-  const chart = chartFor("partners");
-  const list = [...d.top_partners].reverse();
-  chart.setOption({
-    ...baseOption(t),
-    grid: { left: 170, right: 80, top: 4, bottom: 4 },
-    tooltip: { ...baseOption(t).tooltip, trigger: "item", formatter: (p) => `<b>${esc(list[p.dataIndex].name)}</b><br>${money(list[p.dataIndex].amount)} · ${list[p.dataIndex].count} Buchungen` },
-    xAxis: { type: "value", show: false },
-    yAxis: categoryAxis(t, list.map((x) => x.name), { axisLine: { show: false }, axisLabel: { color: t.text2, fontSize: 12.5, width: 160, overflow: "truncate" } }),
-    series: [{
-      type: "bar", barMaxWidth: 16, data: list.map((x) => x.amount / 100),
-      itemStyle: { color: t.series[0], borderRadius: [0, 4, 4, 0] },
-      label: { show: true, position: "right", color: t.text2, fontSize: 12, formatter: (p) => moneyAxis(p.value) }, cursor: "pointer",
-    }],
-  }, true);
-  chart.off("click");
-  chart.on("click", (p) => goToTransactions({ q: list[p.dataIndex].name, direction: "out" }));
-  tables.partners = () => ({ columns: ["Empfänger", "Betrag", "Buchungen"], rows: d.top_partners.map((x) => [x.name, money(x.amount), x.count]) });
-}
-
-function renderCalendar(d, t) {
-  const chart = chartFor("calendar");
-  // Höchstens die letzten 12 Monate, damit die Kästchen lesbar bleiben
-  let from = d.range.from;
-  const to = d.range.to;
-  const limit = new Date(`${to}T00:00`);
-  limit.setFullYear(limit.getFullYear() - 1);
-  limit.setDate(limit.getDate() + 1);
-  if (new Date(`${from}T00:00`) < limit) from = iso(limit);
-  const data = d.daily.filter(([day]) => day >= from && day <= to).map(([day, v]) => [day, Math.max(v, 0) / 100]);
-  const values = data.map((x) => x[1]).sort((a, b) => a - b);
-  const p95 = values[Math.floor(values.length * 0.95)] || 1; // Ausreißer (Miete) sollen die Skala nicht plattdrücken
-  chart.setOption({
-    ...baseOption(t),
-    tooltip: { ...baseOption(t).tooltip, formatter: (p) => `<b>${new Date(`${p.value[0]}T00:00`).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}</b><br>Ausgaben: ${eur.format(p.value[1])}` },
-    visualMap: {
-      min: 0, max: Math.ceil(p95), calculable: false, orient: "horizontal", right: 0, bottom: 0, itemWidth: 10, itemHeight: 120,
-      inRange: { color: t.seq }, textStyle: { color: t.muted, fontSize: 11 }, formatter: (v) => moneyAxis(v), text: ["mehr", "weniger"],
-    },
-    calendar: {
-      range: [from, to], top: 24, left: 34, right: 8, bottom: 40, cellSize: ["auto", "auto"],
-      dayLabel: { firstDay: 1, nameMap: ["S", "M", "D", "M", "D", "F", "S"], color: t.muted, fontSize: 10.5 },
-      monthLabel: { nameMap: MONTHS, color: t.muted, fontSize: 11 },
-      yearLabel: { show: false },
-      itemStyle: { color: t.surface2, borderColor: t.surface, borderWidth: 2 },
-      splitLine: { show: false },
-    },
-    series: [{ type: "heatmap", coordinateSystem: "calendar", data, itemStyle: { borderColor: t.surface, borderWidth: 2, borderRadius: 2 } }],
-  }, true);
-  chart.off("click");
-  chart.on("click", (p) => goToTransactions({ from: p.value[0], to: p.value[0], direction: "out" }));
-  tables.calendar = () => ({ columns: ["Tag", "Ausgaben"], rows: d.daily.map(([day, v]) => [dateDe(day), money(v)]) });
-}
-
-function renderLargest(d) {
-  const box = $(`[data-card="largest"] .largest`);
-  if (!d.largest.length) { box.innerHTML = `<p class="empty-note">Keine Ausgaben im Zeitraum.</p>`; return; }
-  box.innerHTML = d.largest.map((x) => {
-    const c = state.cats.get(x.category_id);
-    const color = c ? catColor((c.parent_id ? state.cats.get(c.parent_id) : c).color) : css("--neutral");
-    return `<div class="item" data-q="${esc(x.counterparty)}" data-date="${x.date}">
-      <div style="min-width:0"><div class="who">${esc(x.counterparty || x.purpose || "Unbekannt")}</div>
-      <div class="meta">${swatch(color)}${esc(catName(x.category_id))} · ${dateDe(x.date)}</div></div>
-      <div class="amt">${money(x.amount)}</div></div>`;
+function depthSparquote(body) {
+  disposeCharts(3);
+  const c = calc();
+  const rows = c.full.map((x) => {
+    const rate = x.income > 0 ? (x.net / x.income) * 100 : null;
+    const soll = (eurOf(x.income) * c.sollRate) / 100;
+    const dev = eurOf(x.net) - soll;
+    return `<tr class="${dev < 0 ? "bad" : ""}"><td>${monthLong(x.month)}</td><td class="num">${money(x.income)}</td><td class="num">${money(x.expense)}</td>
+      <td class="num">${money(x.net)}</td><td class="num">${rate == null ? "–" : UI.pct(rate)}</td><td class="num">${UI.money(soll)}</td>
+      <td class="num dev">${UI.signed(dev, UI.money)}</td><td class="num equiv">${UI.equiv(dev)}</td></tr>`;
   }).join("");
-  $$(".item", box).forEach((el) => (el.onclick = () => goToTransactions({ q: el.dataset.q, from: el.dataset.date, to: el.dataset.date, direction: "" })));
+  const surplus = c.income - c.expense;
+  body.innerHTML = focusHead("Sparquote – exakte Zahlen", `Einnahmen, Ausgaben und Überschuss je Monat gegen das Soll von ${UI.pct(c.sollRate)} der Einnahmen.`) +
+    `<div class="depth-grid"><section class="focus-card scroll-x"><table class="depth-table"><thead><tr><th>Monat</th><th class="num">Einnahmen</th><th class="num">Ausgaben</th><th class="num">Überschuss</th><th class="num">Quote</th><th class="num">Soll-Überschuss</th><th class="num">Abweichung</th><th class="num">Alltagsäquivalent</th></tr></thead>
+      <tbody>${rows}<tr class="sum"><td>Summe</td><td class="num">${UI.money(c.income)}</td><td class="num">${UI.money(c.expense)}</td><td class="num">${UI.money(surplus)}</td><td class="num">${c.rate == null ? "–" : UI.pct(c.rate)}</td><td class="num">${UI.money((c.income * c.sollRate) / 100)}</td><td class="num">${UI.signed(surplus - (c.income * c.sollRate) / 100, UI.money)}</td><td></td></tr></tbody></table></section>
+      <aside class="focus-card">${measuresForm()}</aside></div>`;
+  wireMeasuresForm(body);
+}
+
+// ---------- Kategorien
+function focusKategorien(body) {
+  disposeCharts(2);
+  const c = calc();
+  const t = UI.theme();
+  if (c.empty) { body.innerHTML = focusHead("Kategorien", "Noch keine Umsätze importiert."); return; }
+  const withSoll = c.cats.filter((x) => x.toDate != null || x.ist > 0);
+  const over = c.cats.filter((x) => x.over);
+  if (!dash.selectedCat || !c.cats.some((x) => x.id === dash.selectedCat)) dash.selectedCat = (over[0] || c.cats.slice().sort((a, b) => b.ist - a.ist)[0])?.id;
+  body.innerHTML = focusHead(over.length ? `⚠ ${over.length} ${over.length === 1 ? "Kategorie" : "Kategorien"} über Soll` : "Alle Kategorien im Rahmen",
+    `${monthLong(dash.ym)} bis Tag ${c.day}. Soll = Monatsbudget, sonst Ø der letzten 6 Monate; variable Kategorien anteilig zum Monatsfortschritt, Fixkosten voll.`, over.length > 0) +
+    `<div class="focus-grid"><div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+      <section class="focus-card"><h2>Vergleich: Ist gegen Soll bis heute</h2><p>Balken = ausgegeben, Strich = Soll bis heute. Klick zeigt den Verlauf der Kategorie.</p>
+        <div class="chart" id="f-cats" style="height:${Math.max(220, withSoll.length * 34 + 30)}px"></div></section>
+      <section class="focus-card"><h2 id="f-cat-title">Trend</h2><p>Monatliche Ausgaben, gestrichelt das Monats-Soll</p><div class="chart" id="f-cat-trend" style="height:260px"></div></section>
+    </div><aside class="focus-card compare">
+      ${over.length ? over.slice(0, 5).map((x) => cmpRow(esc(x.name), `+${UI.money0(x.dev)}`, `${UI.money0(x.ist)} statt ${UI.money0(x.toDate)} · ${UI.equiv(x.dev)}`, true)).join("")
+        : cmpRow("Im Rahmen", `${c.cats.filter((x) => x.soll != null).length} Kategorien`, "keine liegt mehr als 5 % über ihrem Soll")}
+      ${cmpRow("Unter Soll gesamt", UI.money0(-c.cats.filter((x) => x.dev < 0).reduce((s, x) => s + x.dev, 0)), "Spielraum in den übrigen Kategorien")}
+      ${depthButton}</aside></div>`;
+  wireDepth(body, "kategorien");
+  const list = [...withSoll].reverse();
+  const chart = mkChart($("#f-cats", body), 2);
+  const maxV = Math.max(...list.map((x) => Math.max(x.ist, x.toDate || 0)), 1);
+  chart.setOption({
+    ...UI.chartBase(t),
+    grid: { left: 150, right: 130, top: 4, bottom: 4 },
+    tooltip: { ...UI.chartBase(t).tooltip, trigger: "item", formatter: (p) => {
+      const x = list[p.dataIndex];
+      return `<b>${esc(x.name)}</b>${x.fixed ? " · Fixkosten" : ""}` + UI.tipRow(UI.mark(x.over ? t.bad : t.ink2), "Ist", money0(x.ist * 100)) +
+        (x.toDate != null ? UI.tipRow(UI.mark(t.ink1), "Soll bis heute", money0(x.toDate * 100)) + UI.tipRow("", `Monats-Soll (${x.source})`, money0(x.soll * 100)) : "") +
+        `<div style="color:${t.muted}">${UI.equiv(x.ist)}</div>`;
+    } },
+    xAxis: { type: "value", show: false, max: maxV * 1.05 },
+    // rechte Achse als Wertespalte, damit Beschriftungen nie mit dem Soll-Strich kollidieren
+    yAxis: [
+      { type: "category", data: list.map((x) => x.name), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: t.text2, fontSize: 12.5, width: 140, overflow: "truncate" } },
+      { type: "category", position: "right", data: list.map((x) => (x.toDate != null ? `${UI.moneyShort(x.ist)} / ${UI.moneyShort(x.toDate)}` : UI.moneyShort(x.ist))),
+        axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: t.text2, fontSize: 12, fontWeight: 500 } },
+    ],
+    series: [
+      { type: "bar", barMaxWidth: 16, cursor: "pointer",
+        data: list.map((x) => ({ value: x.ist, itemStyle: { color: x.over ? t.bad : x.id === dash.selectedCat ? t.ink2 : t.ink3, borderRadius: [0, 4, 4, 0] } })) },
+      { type: "scatter", symbol: "rect", symbolSize: [3, 24], z: 5, silent: true, itemStyle: { color: t.ink1 },
+        data: list.map((x) => (x.toDate != null ? x.toDate : null)) },
+    ],
+  });
+  chart.on("click", (p) => { dash.selectedCat = list[p.dataIndex].id; renderCatTrend(body); });
+  renderCatTrend(body);
+}
+
+function renderCatTrend(body) {
+  const t = UI.theme();
+  const c = calc();
+  const x = c.cats.find((k) => k.id === dash.selectedCat);
+  if (!x) return;
+  $("#f-cat-title", body).textContent = `Trend: ${x.name}`;
+  const months = dash.year.monthly.map((m) => m.month);
+  const values = (dash.year.category_months[String(x.id)] || months.map(() => 0)).map(eurOf);
+  const el = $("#f-cat-trend", body);
+  const old = echarts.getInstanceByDom(el);
+  const chart = old || mkChart(el, 2);
+  chart.setOption({
+    ...UI.chartBase(t),
+    xAxis: monthAxis(t, months),
+    yAxis: UI.valueAxis(t),
+    tooltip: { ...UI.chartBase(t).tooltip, axisPointer: { type: "shadow", shadowStyle: { color: t.grid, opacity: 0.4 } },
+      formatter: (ps) => `<b>${monthLong(months[ps[0].dataIndex])}</b>` + UI.tipRow(UI.mark(t.ink2), x.name, money0(values[ps[0].dataIndex] * 100)) +
+        (x.soll ? UI.tipRow(UI.mark(t.ink1, true), "Soll", money0(x.soll * 100)) : "") },
+    series: [{ type: "bar", barMaxWidth: 24,
+      data: values.map((v, i) => ({ value: v, itemStyle: { borderRadius: [4, 4, 0, 0], color: months[i] === dash.ym ? t.ink4 : x.soll && v > x.soll * (1 + TOLERANCE) ? t.bad : t.ink3 } })),
+      markLine: x.soll ? { symbol: "none", silent: true, data: [{ yAxis: x.soll }], lineStyle: { color: t.ink1, type: "dashed", width: 1.5 },
+        label: { formatter: `Soll ${UI.moneyShort(x.soll)}`, color: t.text, position: "insideEndTop", fontSize: 11.5 } } : undefined }],
+  }, true);
+  chart.off("click");
+  chart.on("click", (p) => openTransactions({ month: months[p.dataIndex], category: x.id, direction: "out" }));
+}
+
+function depthKategorien(body) {
+  disposeCharts(3);
+  const c = calc();
+  const rows = c.cats.map((x) => `<tr class="${x.over ? "bad" : ""}" data-cat="${x.id}" style="cursor:pointer"><td>${esc(x.name)}${x.fixed ? ' <small class="equiv">Fixkosten</small>' : ""}</td>
+      <td class="num">${UI.money(x.ist)}</td><td class="num">${x.soll != null ? UI.money(x.soll) : "–"}</td><td>${esc(x.source)}</td>
+      <td class="num">${x.toDate != null ? UI.money(x.toDate) : "–"}</td><td class="num dev">${x.dev != null ? UI.signed(x.dev, UI.money) : "–"}</td>
+      <td class="num">${dash.m.category_avg[String(x.id)] ? money(dash.m.category_avg[String(x.id)]) : "–"}</td><td class="num equiv">${UI.equiv(x.ist)}</td></tr>` +
+    x.children.filter((k) => k.id && k.id !== x.id).map((k) => `<tr class="child" data-cat="${k.id}" style="cursor:pointer"><td>${esc(k.name)}</td><td class="num">${money(k.amount)}</td><td colspan="5"></td><td class="num equiv">${UI.equiv(eurOf(k.amount))}</td></tr>`).join("")).join("");
+  body.innerHTML = focusHead("Kategorien – exakte Zahlen", `${monthLong(dash.ym)} bis Tag ${c.day}. Zeile anklicken öffnet die Umsätze der Kategorie.`) +
+    `<div class="depth-grid"><section class="focus-card scroll-x"><table class="depth-table" id="d-cats"><thead><tr><th>Kategorie</th><th class="num">Ist</th><th class="num">Monats-Soll</th><th>Quelle</th><th class="num">Soll bis heute</th><th class="num">Abweichung</th><th class="num">Ø 6 Monate</th><th class="num">Alltagsäquivalent</th></tr></thead><tbody>${rows}</tbody></table></section>
+    <aside class="focus-card form-grid"><h2 style="font-size:14px;margin:0">Maßstäbe je Kategorie</h2>
+      <p class="muted" style="margin:0;font-size:13px">Monatsbudgets und das Merkmal <b>Fixkosten</b> stellst du je Kategorie ein. Ohne Budget gilt der Durchschnitt der letzten 6 Monate.</p>
+      <button type="button" id="d-to-cats">Kategorien &amp; Budgets bearbeiten →</button></aside></div>`;
+  $("#d-cats", body).onclick = (e) => { const tr = e.target.closest("tr[data-cat]"); if (tr) openTransactions({ month: dash.ym, category: +tr.dataset.cat, direction: "" }); };
+  $("#d-to-cats", body).onclick = () => { state.returnTo = { key: "kategorien", level: 3 }; zoom.go(1, false).then(() => showView("categories")); };
+}
+
+/** Aus einer Zoomstufe in die Umsätze springen; Esc führt dorthin zurück. */
+function openTransactions({ month, category = "", direction = "" }) {
+  state.returnTo = zoom.level > 1 ? { key: zoom.key, level: zoom.level } : null;
+  const last = new Date(+month.slice(0, 4), +month.slice(5, 7), 0);
+  zoom.go(1, false).then(() => goToTransactions({ from: `${month}-01`, to: iso(last), category, direction }));
+}
+
+const zoom = new UI.Zoom({
+  crumbs: [{ label: "Finanzen", href: "./#dashboard" }],
+  overview: "Übersicht",
+  prefix: "dashboard/",
+  context,
+  items: {
+    ausgaben: { label: "Ausgaben", focus: focusAusgaben, depth: depthAusgaben, depthLabel: "Tabelle" },
+    sparquote: { label: "Sparquote", focus: focusSparquote, depth: depthSparquote, depthLabel: "Tabelle" },
+    kategorien: { label: "Kategorien", focus: focusKategorien, depth: depthKategorien, depthLabel: "Tabelle" },
+  },
+  onEscapeTop: () => {
+    if (state.view === "dashboard") return;
+    const back = state.returnTo;
+    state.returnTo = null;
+    showView("dashboard");
+    if (back) zoom.open(back.key, back.level, null, false);
+  },
+});
+
+function renderAppCrumbs() {
+  if (state.view === "dashboard") { zoom.crumbTarget = "#crumbs"; zoom.renderCrumbs(); $("#context").textContent = context(); return; }
+  zoom.crumbTarget = null;
+  const label = { transactions: "Umsätze", categories: "Kategorien & Regeln", import: "Import" }[state.view];
+  const back = state.returnTo;
+  const via = back ? `<span class="sep">›</span><a href="#" data-return="2">${esc(zoom.items[back.key].label)}</a>${back.level === 3 ? `<span class="sep">›</span><a href="#" data-return="3">Tabelle</a>` : ""}` : "";
+  $("#crumbs").innerHTML = `<a href="./#dashboard" data-home>Finanzen</a><span class="sep">›</span><a href="#" data-home>Übersicht</a>${via}<span class="sep">›</span><span aria-current="page">${label}</span>`;
+  $("#context").innerHTML = `<kbd>Esc</kbd> zurück${back ? " zur Tabelle" : " zur Übersicht"}`;
 }
 
 // ------------------------------------------------------------------ Umsätze
@@ -701,8 +852,8 @@ async function renderCategoriesView() {
   const parents = state.categories.filter((c) => !c.parent_id);
   const row = (c, child) => `
     <div class="cat-row${child ? " child" : ""}" data-id="${c.id}">
-      ${swatch(catColor(c.color))}
       <span class="name">${esc(c.name)}</span>
+      ${c.fixed ? `<span class="kind-tag">Fixkosten</span>` : ""}
       ${!child ? `<span class="kind-tag">${KIND_LABEL[c.kind]}</span>` : ""}
       ${c.budget ? `<span class="meta">Budget ${money0(c.budget)}</span>` : ""}
       <span class="meta">${c.tx_count} Buchungen · ${c.rule_count} Regeln</span>
@@ -716,7 +867,7 @@ async function renderCategoriesView() {
     const amount = [r.min_amount != null ? `ab ${money(r.min_amount)}` : "", r.max_amount != null ? `bis ${money(r.max_amount)}` : ""].filter(Boolean).join(" ");
     return `<div class="rule${r.enabled ? "" : " disabled"}" data-id="${r.id}">
       <div class="cond">${FIELD_LABEL[r.field]} ${OP_LABEL[r.op]} <code>${esc(r.pattern)}</code></div>
-      <div class="target">→ ${swatch(catColor(c?.color))}${esc(catName(r.category_id))}</div>
+      <div class="target">→ ${esc(catName(r.category_id))}</div>
       <div class="meta">${r.direction === "out" ? "nur Ausgaben" : r.direction === "in" ? "nur Einnahmen" : "Ein- & Ausgänge"}${amount ? ` · ${amount}` : ""} · Priorität ${r.priority}${r.enabled ? "" : " · deaktiviert"}</div>
     </div>`;
   }).join("") || `<p class="empty-note">Noch keine Regeln.</p>`;
@@ -735,16 +886,8 @@ function openCategoryDialog(cat) {
   f.parent_id.value = cat?.parent_id || "";
   f.kind.value = cat?.kind || "expense";
   f.budget.value = cat?.budget ? cat.budget / 100 : "";
-  const used = new Set(state.categories.filter((c) => !c.parent_id).map((c) => c.color));
-  let color = cat?.color || LIGHT_SERIES.find((c) => !used.has(c)) || LIGHT_SERIES[0];
-  const renderSwatches = () => {
-    $("#swatches").innerHTML = [...LIGHT_SERIES, "#898781"].map((c) =>
-      `<button type="button" class="swatch" style="background:${catColor(c)}" data-color="${c}" aria-pressed="${c === color}" aria-label="Farbe ${c}"></button>`).join("") +
-      `<input type="color" value="${color}" aria-label="Eigene Farbe" title="Eigene Farbe">`;
-    $$("#swatches .swatch").forEach((b) => (b.onclick = () => { color = b.dataset.color; renderSwatches(); }));
-    $("#swatches input").oninput = (e) => { color = e.target.value; };
-  };
-  renderSwatches();
+  f.fixed.checked = !!cat?.fixed;
+  const color = cat?.color || "#898781"; // Farbe wird nicht mehr angezeigt (Graustufen), bleibt aber gespeichert
   const syncKind = () => { f.kind.disabled = !!f.parent_id.value; };
   f.parent_id.onchange = syncKind;
   syncKind();
@@ -766,7 +909,7 @@ function openCategoryDialog(cat) {
   f.onsubmit = async (e) => {
     if (e.submitter?.value !== "save") return;
     e.preventDefault();
-    const body = { name: f.name.value, parent_id: f.parent_id.value ? +f.parent_id.value : null, kind: f.kind.value, color, budget: f.budget.value };
+    const body = { name: f.name.value, parent_id: f.parent_id.value ? +f.parent_id.value : null, kind: f.kind.value, color, budget: f.budget.value, fixed: f.fixed.checked };
     try {
       await api(cat ? "PUT" : "POST", cat ? `/api/categories/${cat.id}` : "/api/categories", body);
       $("#cat-dialog").close();
@@ -865,8 +1008,30 @@ async function loadImportView() {
 function wire() {
   $$(".tabs button").forEach((b) => (b.onclick = () => showView(b.dataset.view)));
   window.addEventListener("hashchange", () => {
-    const v = location.hash.slice(1);
+    const v = location.hash.slice(1).split("/")[0];
     if (["dashboard", "transactions", "categories", "import"].includes(v) && v !== state.view) showView(v);
+  });
+  // Blick: Kachel öffnet ihren Fokus (Depot führt räumlich in den Sparplan)
+  const openTile = (el) => {
+    if (el.dataset.key === "depot") return UI.zoomTo("sparplan.html", el);
+    zoom.open(el.dataset.key, 2, el);
+  };
+  $("#blick").addEventListener("click", (e) => {
+    if (e.target.closest("a")) return;
+    const el = e.target.closest(".blick-tile");
+    if (el) openTile(el);
+  });
+  $("#blick").addEventListener("keydown", (e) => {
+    const el = e.target.closest(".blick-tile");
+    if (el && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openTile(el); }
+  });
+  $("#crumbs").addEventListener("click", (e) => {
+    const a = e.target.closest("[data-home], [data-return]");
+    if (!a || state.view === "dashboard") return;
+    e.preventDefault();
+    const back = a.dataset.return ? { ...state.returnTo, level: +a.dataset.return } : null;
+    showView("dashboard");
+    if (back) zoom.open(back.key, back.level, null, false);
   });
   $$("#period-presets button").forEach((b) => (b.onclick = () => setPeriod(b.dataset.period)));
   const customRange = () => {
@@ -952,9 +1117,9 @@ function wire() {
   dz.addEventListener("drop", (e) => { e.preventDefault(); dz.classList.remove("over"); uploadFiles([...e.dataTransfer.files]); });
 
   // Theme-Wechsel: Diagramme mit den Farben des neuen Modus neu zeichnen
-  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => state.dash && !state.dash.empty && renderDashboard(state.dash));
-  new MutationObserver(() => state.dash && !state.dash.empty && renderDashboard(state.dash))
-    .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  const retheme = () => { if (dash.m) { renderBlick(); if (zoom.level > 1) zoom.refresh(); } };
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", retheme);
+  new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 }
 
 // Neue Dateien aus der Inbox (automatischer Import) erkennen und die Ansicht auffrischen
@@ -974,7 +1139,6 @@ async function poll() {
 
 async function init() {
   wire();
-  setupTableToggles();
   const params = new URLSearchParams(location.search);
   state.account = params.get("account") || "";
   try {
@@ -983,8 +1147,9 @@ async function init() {
     toast(`Server nicht erreichbar: ${e.message}`, { error: true });
     return;
   }
-  const view = location.hash.slice(1);
+  const view = location.hash.slice(1).split("/")[0];
   state.view = ["dashboard", "transactions", "categories", "import"].includes(view) ? view : "dashboard";
+  const zoomHash = location.hash.slice(1);
   const period = params.get("period") || "12m";
   state.period = period;
   [state.from, state.to] = period === "custom" ? [params.get("from"), params.get("to")] : computePeriod(period);
@@ -992,6 +1157,11 @@ async function init() {
   $("#date-to").value = state.to || "";
   $$("#period-presets button").forEach((b) => b.classList.toggle("active", b.dataset.period === period));
   showView(state.view);
+  if (state.view === "dashboard" && zoomHash.includes("/")) {
+    history.replaceState(null, "", `${location.pathname}${location.search}#${zoomHash}`);
+    await loadDashboard();
+    zoom.fromHash(false);
+  }
   setInterval(poll, 15000);
 }
 

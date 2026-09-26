@@ -13,7 +13,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from finanzen import db, depot  # noqa: E402
+import sqlite3  # noqa: E402
+
+from finanzen import analytics, db, depot  # noqa: E402
 from finanzen.server import App, serve  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent.parent / "finanzen" / "static"
@@ -93,6 +95,64 @@ class DepotTests(unittest.TestCase):
         self.assertIsNone(depot.stats(points[:5]))
 
 
+class MeasuresTests(unittest.TestCase):
+    """Soll-Maßstäbe und Grundlage der Alltagsäquivalente."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = str(Path(self.tmp.name) / "t.db")
+        db.init_db(self.path)
+        self.conn = db.connect(self.path)
+        cid = {r["name"]: r["id"] for r in self.conn.execute("SELECT id, name FROM categories")}
+        rows = []
+        for month in ("2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09"):
+            rows += [(f"{month}-01", -100000, cid["Miete"], "Miete"), (f"{month}-05", -50000, cid["Supermarkt"], "Rewe"),
+                     (f"{month}-02", 300000, cid["Gehalt"], "Gehalt")]
+        self.conn.executemany(
+            "INSERT INTO transactions (hash, date, amount, category_id, counterparty) VALUES (?, ?, ?, ?, ?)",
+            [(f"h{i}", *r) for i, r in enumerate(rows)])
+        self.conn.commit()
+
+    def tearDown(self):
+        self.conn.close()
+        self.tmp.cleanup()
+
+    def test_defaults_fixed(self):
+        fixed = {r["name"] for r in self.conn.execute("SELECT name FROM categories WHERE fixed = 1")}
+        self.assertEqual(fixed, db.DEFAULT_FIXED)
+
+    def test_measures_from_transactions(self):
+        m = analytics.measures(self.conn, {"savings_rate": 20}, today="2026-09-20")
+        self.assertEqual(m["ref"], "2026-09-05")  # letzte Buchung vor heute
+        self.assertEqual(m["months"], ["2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08"])
+        self.assertEqual(m["avg_expense"], 150000)
+        self.assertEqual(m["avg_fixed"], 100000)  # Miete erbt Fixkosten von „Wohnen“
+        self.assertEqual(m["soll"]["daily"], round(150000 / 30.4))
+        own = analytics.measures(self.conn, {"monthly_expense": 200000, "fixed": 120000}, today="2026-09-20")
+        self.assertEqual((own["soll"]["monthly_expense"], own["soll"]["fixed"]), (200000, 120000))
+        self.assertEqual(own["soll"]["fixed_source"], "eigener Wert")
+
+    def test_empty_database(self):
+        self.conn.execute("DELETE FROM transactions")
+        m = analytics.measures(self.conn, {"savings_rate": 20})
+        self.assertIsNone(m["avg_expense"])
+        self.assertIsNone(m["soll"]["daily"])
+
+    def test_migration_adds_fixed(self):
+        old = str(Path(self.tmp.name) / "alt.db")
+        conn = sqlite3.connect(old)
+        conn.execute("CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT, parent_id INTEGER, kind TEXT, "
+                     "color TEXT, budget INTEGER, sort INTEGER NOT NULL DEFAULT 0)")
+        conn.execute("INSERT INTO categories (name, kind) VALUES ('Wohnen', 'expense'), ('Freizeit', 'expense')")
+        conn.commit()
+        conn.close()
+        db.init_db(old)
+        conn = db.connect(old)
+        self.assertEqual({r[0]: r[1] for r in conn.execute("SELECT name, fixed FROM categories")},
+                         {"Wohnen": 1, "Freizeit": 0})
+        conn.close()
+
+
 class DepotApiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -138,9 +198,23 @@ class DepotApiTests(unittest.TestCase):
         self.assertEqual((status, q["price"]), (200, 104.2))
         self.assertIn("stats", q)
 
+    def test_measures_and_fixed_flag(self):
+        status, m = self.call("GET", "/api/measures")
+        self.assertEqual(status, 200)
+        self.assertEqual(m["soll"]["savings_rate"], 20)
+        status, cat = self.call("POST", "/api/categories", {"name": "Fitness", "kind": "expense", "color": "#898781", "fixed": True})
+        self.assertEqual((status, cat["fixed"]), (200, 1))
+        status, cat = self.call("PUT", f"/api/categories/{cat['id']}", {"fixed": False})
+        self.assertEqual(cat["fixed"], 0)
+        status, s = self.call("PUT", "/api/depot/settings", {"targets": {"savings_rate": 25, "goal": 5000000, "goal_year": 2040}})
+        _, m = self.call("GET", "/api/measures")
+        self.assertEqual(m["soll"]["savings_rate"], 25)
+
     def test_sparplan_page(self):
         with urllib.request.urlopen(self.base + "/sparplan.html") as res:
-            self.assertIn(b"Zukunft gestalten", res.read())
+            html = res.read()
+        self.assertIn(b"tpl-play", html)
+        self.assertIn(b"ui-core.js", html)
 
 
 @unittest.skipUnless(shutil.which("node"), "Node.js nicht installiert")
@@ -180,6 +254,17 @@ class ModelTests(unittest.TestCase):
         self.assertAlmostEqual(res["real"], 1000, places=6)
         self.assertTrue(res["ordered"])
         self.assertAlmostEqual(res["tax"], (5000 * 0.7 - 1000) * 0.26375)
+
+
+    def test_goal(self):
+        res = self.run_js("""
+          const pos = [{start: 0, rate: 100, ret: 0, vol: 0, ter: 0}];
+          const need = M.requiredRate(pos, {}, 10, 2000);
+          const r = M.project([{start: 1000, rate: 0, ret: 0, vol: 10, ter: 0}], {months: 12, paths: 400, probe: {month: 12, threshold: 0}});
+          const none = M.project([{start: 1000, rate: 0, ret: 0, vol: 10, ter: 0}], {months: 12, paths: 400, probe: {month: 12, threshold: 1e9}});
+          console.log(JSON.stringify({need, all: r.bands.prob, none: none.bands.prob}));""")
+        self.assertAlmostEqual(res["need"], 200, places=3)
+        self.assertEqual((res["all"], res["none"]), (1, 0))
 
 
 if __name__ == "__main__":

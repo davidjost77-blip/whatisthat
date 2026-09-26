@@ -71,6 +71,8 @@ DEFAULT_SETTINGS = {
         "real": False, "tax": False, "lumps": [],
     },
     "extras": [],                                   # hypothetische zusätzliche ETFs
+    # Soll-Maßstäbe (None = aus den Umsätzen ableiten), Beträge in Cent
+    "targets": {"monthly_expense": None, "fixed": None, "savings_rate": 20, "goal": 10000000, "goal_year": None},
 }
 
 TTL = {"1d": 15 * 60, "1wk": 6 * 3600, "1mo": 12 * 3600}

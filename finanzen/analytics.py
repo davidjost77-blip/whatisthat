@@ -224,6 +224,7 @@ def dashboard(conn, date_from=None, date_to=None, accounts=None):
         "monthly": list(monthly.values()),
         "categories": categories,
         "stacked": stacked,
+        "category_months": {str(cid): [max(vals.get(m, 0), 0) for m in months] for cid, vals in cat_month.items()},
         "sankey": {"nodes": nodes, "links": links},
         "balance": balance,
         "daily": sorted(daily.items()),
@@ -290,3 +291,63 @@ def uncategorized_groups(conn, limit=30):
     # Wichtigste zuerst: häufig und/oder teuer
     out.sort(key=lambda g: -(abs(g["sum"]) / 100 + g["count"] * 20))
     return {"total": sum(g["count"] for g in out), "groups": out[:limit]}
+
+
+def previous_months(ref, n):
+    """Die n vollen Monate vor dem Monat von ``ref`` (ISO-Datum), älteste zuerst."""
+    y, m = int(ref[:4]), int(ref[5:7])
+    out = []
+    for _ in range(n):
+        y, m = (y - 1, 12) if m == 1 else (y, m - 1)
+        out.append(f"{y:04d}-{m:02d}")
+    return out[::-1]
+
+
+def measures(conn, targets, today=None, window=6):
+    """Soll-Maßstäbe und Grundlage der Alltagsäquivalente (Beträge in Cent).
+
+    Bezugstag ist heute oder – bei älteren Exporten – die letzte Buchung. Der Durchschnitt stammt aus den
+    ``window`` vollen Monaten davor; eigene Werte aus ``targets`` haben Vorrang.
+    """
+    today = today or date.today().isoformat()
+    last = conn.execute("SELECT MAX(date) FROM transactions").fetchone()[0]
+    ref = min(today, last) if last else today
+    first = conn.execute("SELECT MIN(date) FROM transactions").fetchone()[0]
+    months = [m for m in previous_months(ref, window) if first and m >= first[:7]]
+    cats = load_categories(conn)
+    cl = Classifier(cats)
+    expense = fixed = 0
+    by_cat = defaultdict(int)
+    if months:
+        txs = _fetch(conn, f"{months[0]}-01", f"{months[-1]}-31", None)
+        for tx in txs:
+            if cl.kind(tx) != "expense":
+                continue
+            value = -tx["amount"]
+            expense += value
+            cat = cats.get(tx["category_id"])
+            if cat:
+                by_cat[cat["top_id"]] += value
+                if cat["fixed"] or cats[cat["top_id"]]["fixed"]:
+                    fixed += value
+    n = len(months) or 1
+    avg_expense = round(expense / n) if months else None
+    avg_fixed = round(fixed / n) if months and fixed > 0 else None
+    monthly = targets.get("monthly_expense") or avg_expense
+    return {
+        "ref": ref,
+        "months": months,
+        "avg_expense": avg_expense,
+        "avg_fixed": avg_fixed,
+        "category_avg": {str(cid): round(v / n) for cid, v in by_cat.items()} if months else {},
+        "soll": {
+            "monthly_expense": monthly,
+            "monthly_expense_source": "eigener Wert" if targets.get("monthly_expense") else
+            (f"Ø {len(months)} Monate" if months else None),
+            "daily": round(monthly / 30.4) if monthly else None,
+            "fixed": targets.get("fixed") or avg_fixed,
+            "fixed_source": "eigener Wert" if targets.get("fixed") else (f"Ø {len(months)} Monate" if avg_fixed else None),
+            "savings_rate": targets.get("savings_rate", 20),
+        },
+        "targets": targets,
+    }
