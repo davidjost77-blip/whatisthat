@@ -31,7 +31,7 @@ python scripts\demo_daten.py inbox     # legt die Dateien in die Inbox, die App 
    ```bash
    git clone https://github.com/davidjost77-blip/whatisthat.git ~/Finanzen
    cd ~/Finanzen
-   git checkout claude/finance-tracking-dashboards-eb5ls8
+   git checkout claude/elegant-pascal-9m6smy
    python3 -m finanzen --open
    ```
 3. Später reicht ein Doppelklick auf **`Finanzen starten.command`** im Ordner `~/Finanzen`. Das Terminal-Fenster
