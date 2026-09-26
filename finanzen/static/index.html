@@ -10,7 +10,7 @@
 <body>
   <header class="topbar">
     <div class="brand">
-      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--series-1)"/><path d="M8 22 L14 15 L18 19 L24 10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><defs><linearGradient id="brandgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c5cff"/><stop offset=".55" stop-color="#2f8ff0"/><stop offset="1" stop-color="#0ea5a0"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="url(#brandgrad)"/><path d="M8 22 L14 15 L18 19 L24 10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span>Finanzen</span>
     </div>
     <nav class="tabs" role="tablist">
@@ -48,7 +48,15 @@
   <main>
     <!-- ======================= DASHBOARD: BLICK ======================= -->
     <section class="view" id="view-dashboard">
-      <div class="blick" id="blick" aria-label="Übersicht"></div>
+      <div class="blick-bar">
+        <h1>Deine Finanzen <span>auf einen Blick</span></h1>
+        <div class="seg view-switch" id="view-switch" role="group" aria-label="Darstellung">
+          <button type="button" data-mode="bild">Bild</button>
+          <button type="button" data-mode="kacheln">Kacheln</button>
+        </div>
+      </div>
+      <div class="scene" id="scene" aria-label="Metapher-Bild"></div>
+      <div class="blick" id="blick" aria-label="Übersicht" hidden></div>
       <p class="blick-foot muted" id="blick-foot"></p>
     </section>
 
@@ -228,6 +236,7 @@
   <script src="vendor/echarts.min.js"></script>
   <script src="vendor/motion.js"></script>
   <script src="ui-core.js"></script>
+  <script src="scene.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

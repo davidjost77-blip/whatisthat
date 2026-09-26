@@ -262,8 +262,9 @@ function calc() {
 const context = () => (dash.ref ? `Stand ${dateDe(dash.ref)} · ${monthLong(dash.ym)}` : "");
 
 function tile(key, { q, verdict, cls = "", metaphor, facts }) {
-  return `<div class="blick-tile" role="button" tabindex="0" data-key="${key}" aria-label="${esc(q)}: ${esc(verdict.replace(/<[^>]+>/g, ""))}. Öffnen">
-    <span class="q">${esc(q)}</span><span class="more-hint" aria-hidden="true">Fokus ↗</span>
+  const [tone, icon] = TONES[key];
+  return `<div class="blick-tile" role="button" tabindex="0" data-key="${key}" data-tone="${tone}" aria-label="${esc(q)}: ${esc(verdict.replace(/<[^>]+>/g, ""))}. Öffnen">
+    <span class="q">${UI.icon(icon)}${esc(q)}</span><span class="more-hint" aria-hidden="true">Fokus ↗</span>
     <span class="verdict ${cls}">${verdict}</span>
     <div class="metaphor">${metaphor}</div>
     <div class="facts">${facts.map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join("")}</div>
@@ -336,7 +337,10 @@ function renderBlick() {
       facts: [["Depotwert", UI.amount(d.value)], ["Eingezahlt", UI.money0(d.invested)], ["Sparplan", `${UI.money0(d.rate)} / Monat${d.live ? "" : ' <small class="equiv">ohne Live-Kurs</small>'}`]],
     }));
   }
+  const firstTiles = !$("#blick").children.length;
   $("#blick").innerHTML = tiles.join("");
+  renderScene(c);
+  applyBlickMode(firstTiles);
   const src = dash.m.soll;
   $("#blick-foot").innerHTML = `Maßstäbe: Monats-Soll ${src.monthly_expense ? `${UI.money0(eurOf(src.monthly_expense))} (${esc(src.monthly_expense_source)})` : "–"} ·
     Fixkosten ${src.fixed ? `${UI.money0(eurOf(src.fixed))} / Monat (${esc(src.fixed_source)})` : "unbekannt"} · Tagesbudget ${src.daily ? UI.money0(eurOf(src.daily)) : "–"}.
@@ -346,6 +350,48 @@ function renderBlick() {
   badge.hidden = !uncat;
   badge.textContent = uncat;
   badge.title = `${uncat} Buchungen ohne Kategorie`;
+}
+
+// ---------- Metapher-Bild „Landschaft“ (DESIGN.md §8)
+function renderScene(c) {
+  const d = dash.depot;
+  const over = c.cats.filter((x) => x.over);
+  const data = {
+    ausgaben: c.empty || c.sollMonth == null ? null : {
+      soll: c.sollMonth, ist: c.ist, sollToDate: c.sollToDate,
+      remainingText: c.sollMonth - c.ist >= 0 ? `${UI.money0(c.sollMonth - c.ist)} übrig` : `⚠ ${UI.money0(c.ist - c.sollMonth)} drüber`,
+      sub: (() => { const diff = c.ist - c.sollToDate; return `${UI.money0(Math.abs(diff))} ${diff > 0 ? "über" : "unter"} Plan`; })(),
+      sub2: UI.equiv(c.sollMonth - c.ist),
+      bad: c.ist - c.sollToDate > c.sollToDate * TOLERANCE,
+    },
+    sparquote: c.rate == null ? null : {
+      rate: Math.max(0, c.rate), soll: c.sollRate, sollText: UI.pct(c.sollRate), bad: c.rate < c.sollRate,
+      text: `${c.rate < c.sollRate ? "⚠ " : ""}${UI.pct(c.rate)}`, sub: `Überschuss ${UI.money0(c.income - c.expense)}`, sub2: UI.equiv(c.income - c.expense),
+    },
+    kategorien: {
+      over: over.map((x) => ({ name: x.name, devText: UI.money0(x.dev) })),
+      text: c.empty ? "Keine Daten" : over.length ? `${over.length} über Soll` : "Alles im Rahmen",
+      sub: over.length ? `zusammen ${UI.money0(over.reduce((s, x) => s + x.dev, 0))} drüber` : "keine Kategorie über ihrem Soll",
+    },
+    depot: d && d.count ? {
+      value: d.value, invested: d.invested, investedText: UI.money0(d.invested), bad: d.value < d.invested,
+      text: `${d.value < d.invested ? "⚠ " : ""}${UI.money0(d.value)}`, sub: `${UI.signed(d.value - d.invested)} ggü. Einzahlungen`, sub2: UI.equiv(d.value),
+    } : null,
+  };
+  Scene.mount($("#scene"), Scene.finance(data), (key, el) => (key === "depot" ? UI.zoomTo("sparplan.html", el) : zoom.open(key, 2, el)));
+}
+
+// Standard: Bild; auf schmalen Bildschirmen Kacheln, weil das Bild dort zu klein zum Lesen wäre
+let blickMode = (() => {
+  const fallback = matchMedia("(max-width: 700px)").matches ? "kacheln" : "bild";
+  try { return localStorage.getItem("blickMode") || fallback; } catch { return fallback; }
+})();
+function applyBlickMode(enter = false) {
+  $("#scene").hidden = blickMode !== "bild";
+  $("#blick").hidden = blickMode !== "kacheln";
+  $$("#view-switch button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === blickMode)));
+  $$("#view-switch button").forEach((b) => b.classList.toggle("active", b.dataset.mode === blickMode));
+  if (enter && blickMode === "kacheln") UI.enter($$("#blick .blick-tile"));
 }
 
 // ---------- Diagramme in den Zoom-Ebenen
@@ -361,7 +407,11 @@ function disposeCharts(level) {
 }
 window.addEventListener("resize", () => [2, 3].forEach((l) => layerCharts[l].forEach((c) => c.resize())));
 
-const focusHead = (title, sub, bad) => `<div class="focus-head"><div><h1 class="${bad ? "bad" : ""}">${title}</h1><p>${sub}</p></div></div>`;
+const TONES = { ausgaben: ["violet", "tank", "Ausgaben"], sparquote: ["teal", "plant", "Sparquote"], kategorien: ["sky", "cloud", "Kategorien"], depot: ["gold", "boat", "Depot & Sparplan"] };
+const focusHead = (title, sub, bad, key = zoom.key) => {
+  const [, icon, name] = TONES[key] || [];
+  return `<div class="focus-head"><div>${icon ? `<div class="tone-chip">${UI.icon(icon)}${name}</div>` : ""}<h1 class="${bad ? "bad" : ""}">${title}</h1><p>${sub}</p></div></div>`;
+};
 const cmpRow = (k, v, s = "", bad = false) => `<div class="row"><span class="k">${k}</span><span class="v ${bad ? "sig-bad" : ""}">${v}</span>${s ? `<span class="s">${s}</span>` : ""}</div>`;
 const depthButton = `<div class="to-depth"><button type="button" class="primary" data-depth>Exakte Zahlen (Tiefe) ↘</button></div>`;
 function wireDepth(body, key) {
@@ -388,7 +438,7 @@ function focusAusgaben(body) {
       <div class="compare-stack" style="display:flex;flex-direction:column;gap:16px;min-width:0">
         <section class="focus-card"><h2>Vergleich: dieser Monat Tag für Tag</h2><p>Kumulierte Ausgaben gegen den Soll-Pfad und den Vormonat</p>
           <div class="chart" id="f-cum" style="height:min(46vh,420px)"></div>
-          <div class="legend-inline"><span><i class="line"></i>${monthLong(dash.ym)}</span><span><i class="dash"></i>Soll-Pfad</span><span><i style="background:${t.ink3};height:2px"></i>Vormonat</span></div></section>
+          <div class="legend-inline"><span><i class="line" style="background:${t.violet}"></i>${monthLong(dash.ym)}</span><span><i class="dash"></i>Soll-Pfad</span><span><i style="background:${t.ink3};height:2px"></i>Vormonat</span></div></section>
         <section class="focus-card"><h2>Trend: 12 Monate</h2><p>Ausgaben pro Monat, gestrichelt das Monats-Soll. Farbig nur Monate deutlich über Soll.</p>
           <div class="chart" id="f-trend" style="height:280px"></div></section>
       </div>
@@ -422,14 +472,15 @@ function focusAusgaben(body) {
     tooltip: { ...UI.chartBase(t).tooltip, formatter: (ps) => {
       const i = ps[0].dataIndex;
       return `<b>${i + 1}. ${monthLong(dash.ym).split(" ")[0]}</b>` +
-        (cur[i] != null ? UI.tipRow(UI.mark(t.ink1), "Dieser Monat", money0(cur[i] * 100)) : "") +
+        (cur[i] != null ? UI.tipRow(UI.mark(t.violet), "Dieser Monat", money0(cur[i] * 100)) : "") +
         (path[i] != null ? UI.tipRow(UI.mark(t.ink2, true), "Soll-Pfad", money0(path[i] * 100)) : "") +
         (prev[i] != null ? UI.tipRow(UI.mark(t.ink3), "Vormonat", money0(prev[i] * 100)) : "");
     } },
     series: [
       { name: "Vormonat", type: "line", data: prev, showSymbol: false, lineStyle: { width: 2, color: t.ink3 }, itemStyle: { color: t.ink3 } },
       { name: "Soll-Pfad", type: "line", data: path, showSymbol: false, lineStyle: { width: 1.5, type: "dashed", color: t.ink2 }, itemStyle: { color: t.ink2 } },
-      { name: "Dieser Monat", type: "line", data: cur, showSymbol: false, z: 5, lineStyle: { width: 2.5, color: bad ? t.bad : t.ink1 }, itemStyle: { color: bad ? t.bad : t.ink1 },
+      { name: "Dieser Monat", type: "line", data: cur, showSymbol: false, z: 5, smooth: 0.25, lineStyle: { width: 3, color: bad ? t.bad : t.violet }, itemStyle: { color: bad ? t.bad : t.violet },
+        areaStyle: { color: UI.areaFill(bad ? t.bad : t.violet) },
         endLabel: { show: true, formatter: (p) => `${UI.moneyShort(p.value)}`, color: bad ? t.bad : t.text, fontWeight: 600 } },
     ],
     grid: { ...UI.chartBase(t).grid, right: 70 },
@@ -445,15 +496,15 @@ function focusAusgaben(body) {
     yAxis: UI.valueAxis(t),
     tooltip: { ...UI.chartBase(t).tooltip, axisPointer: { type: "shadow", shadowStyle: { color: t.grid, opacity: 0.4 } }, formatter: (ps) => {
       const i = ps[0].dataIndex, v = values[i];
-      return `<b>${monthLong(months[i])}</b>${months[i] === dash.ym ? " · läuft" : ""}` + UI.tipRow(UI.mark(t.ink2), "Ausgaben", money0(v * 100)) +
+      return `<b>${monthLong(months[i])}</b>${months[i] === dash.ym ? " · läuft" : ""}` + UI.tipRow(UI.mark(t.violet), "Ausgaben", money0(v * 100)) +
         (c.sollMonth ? UI.tipRow(UI.mark(t.ink1, true), "Soll", money0(c.sollMonth * 100)) + UI.tipRow("", "Abweichung", UI.signed(v - c.sollMonth)) : "") +
         `<div style="color:${t.muted}">${UI.equiv(v)}</div>`;
     } },
     series: [{
       type: "bar", barMaxWidth: 26,
       data: values.map((v, i) => ({ value: v, itemStyle: { borderRadius: [4, 4, 0, 0],
-        color: months[i] === dash.ym ? t.ink4 : c.sollMonth && v > c.sollMonth * (1 + TOLERANCE) ? t.bad : t.ink3,
-        borderColor: months[i] === dash.ym ? t.ink3 : "transparent", borderType: "dashed" } })),
+        color: months[i] === dash.ym ? UI.alpha(t.violet, 0.35) : c.sollMonth && v > c.sollMonth * (1 + TOLERANCE) ? t.bad : t.violet,
+        borderColor: months[i] === dash.ym ? t.violet : "transparent", borderType: "dashed" } })),
       markLine: c.sollMonth ? { symbol: "none", silent: true, data: [{ yAxis: c.sollMonth }], lineStyle: { color: t.ink1, type: "dashed", width: 1.5 },
         label: { formatter: `Soll ${UI.moneyShort(c.sollMonth)}`, color: t.text, position: "insideEndTop", fontSize: 11.5 } } : undefined,
     }],
@@ -537,7 +588,7 @@ function focusSparquote(body) {
     `<div class="focus-grid"><div style="display:flex;flex-direction:column;gap:16px;min-width:0">
       <section class="focus-card"><h2>Trend: Sparquote pro Monat</h2><p>Gestrichelt das Soll, farbig die Monate darunter</p><div class="chart" id="f-rate" style="height:min(42vh,380px)"></div></section>
       <section class="focus-card"><h2>Vergleich: Überschuss aufsummiert</h2><p>Was du zurückgelegt hast gegen das, was das Soll vorsieht</p><div class="chart" id="f-cumsurplus" style="height:280px"></div>
-        <div class="legend-inline"><span><i class="line"></i>Überschuss</span><span><i class="dash"></i>Soll-Überschuss</span></div></section>
+        <div class="legend-inline"><span><i class="line" style="background:${t.teal}"></i>Überschuss</span><span><i class="dash"></i>Soll-Überschuss</span></div></section>
     </div><aside class="focus-card compare">
       ${cmpRow("Sparquote", UI.pct(c.rate), `Soll ${UI.pct(c.sollRate)}`, bad)}
       ${cmpRow("Überschuss", UI.money0(surplus), UI.equiv(surplus))}
@@ -556,11 +607,11 @@ function focusSparquote(body) {
     yAxis: UI.valueAxis(t, (v) => `${v} %`),
     tooltip: { ...UI.chartBase(t).tooltip, axisPointer: { type: "shadow", shadowStyle: { color: t.grid, opacity: 0.4 } }, formatter: (ps) => {
       const i = ps[0].dataIndex, x = c.full[i];
-      return `<b>${monthLong(months[i])}</b>` + UI.tipRow(UI.mark(t.ink2), "Sparquote", rates[i] == null ? "–" : UI.pct(rates[i])) +
+      return `<b>${monthLong(months[i])}</b>` + UI.tipRow(UI.mark(t.teal), "Sparquote", rates[i] == null ? "–" : UI.pct(rates[i])) +
         UI.tipRow("", "Überschuss", money0(x.net)) + UI.tipRow(UI.mark(t.ink1, true), "Soll", UI.pct(c.sollRate));
     } },
     series: [{ type: "bar", barMaxWidth: 26,
-      data: rates.map((v) => ({ value: v, itemStyle: { color: v != null && v < c.sollRate ? t.bad : t.ink3, borderRadius: v >= 0 ? [4, 4, 0, 0] : [0, 0, 4, 4] } })),
+      data: rates.map((v) => ({ value: v, itemStyle: { color: v != null && v < c.sollRate ? t.bad : t.teal, borderRadius: v >= 0 ? [4, 4, 0, 0] : [0, 0, 4, 4] } })),
       markLine: { symbol: "none", silent: true, data: [{ yAxis: c.sollRate }], lineStyle: { color: t.ink1, type: "dashed", width: 1.5 },
         label: { formatter: `Soll ${UI.pct(c.sollRate)}`, color: t.text, position: "insideEndTop", fontSize: 11.5 } } }],
   });
@@ -574,12 +625,12 @@ function focusSparquote(body) {
     yAxis: UI.valueAxis(t),
     tooltip: { ...UI.chartBase(t).tooltip, formatter: (ps) => {
       const i = ps[0].dataIndex;
-      return `<b>bis ${monthLong(months[i])}</b>` + UI.tipRow(UI.mark(t.ink1), "Überschuss", money0(cumS[i] * 100)) +
+      return `<b>bis ${monthLong(months[i])}</b>` + UI.tipRow(UI.mark(t.teal), "Überschuss", money0(cumS[i] * 100)) +
         UI.tipRow(UI.mark(t.ink2, true), "Soll", money0(cumSoll[i] * 100)) + `<div style="color:${t.muted}">${UI.equiv(cumS[i])}</div>`;
     } },
     series: [
       { type: "line", data: cumSoll, showSymbol: false, lineStyle: { width: 1.5, type: "dashed", color: t.ink2 } },
-      { type: "line", data: cumS, showSymbol: false, lineStyle: { width: 2.5, color: bad ? t.bad : t.ink1 }, areaStyle: { color: t.ink4, opacity: 0.6 },
+      { type: "line", data: cumS, showSymbol: false, smooth: 0.25, lineStyle: { width: 3, color: bad ? t.bad : t.teal }, areaStyle: { color: UI.areaFill(bad ? t.bad : t.teal) },
         endLabel: { show: true, formatter: (p) => UI.moneyShort(p.value), color: t.text, fontWeight: 600 } },
     ],
     grid: { ...UI.chartBase(t).grid, right: 70 },
@@ -634,7 +685,7 @@ function focusKategorien(body) {
     grid: { left: 150, right: 130, top: 4, bottom: 4 },
     tooltip: { ...UI.chartBase(t).tooltip, trigger: "item", formatter: (p) => {
       const x = list[p.dataIndex];
-      return `<b>${esc(x.name)}</b>${x.fixed ? " · Fixkosten" : ""}` + UI.tipRow(UI.mark(x.over ? t.bad : t.ink2), "Ist", money0(x.ist * 100)) +
+      return `<b>${esc(x.name)}</b>${x.fixed ? " · Fixkosten" : ""}` + UI.tipRow(UI.mark(x.over ? t.bad : t.sky), "Ist", money0(x.ist * 100)) +
         (x.toDate != null ? UI.tipRow(UI.mark(t.ink1), "Soll bis heute", money0(x.toDate * 100)) + UI.tipRow("", `Monats-Soll (${x.source})`, money0(x.soll * 100)) : "") +
         `<div style="color:${t.muted}">${UI.equiv(x.ist)}</div>`;
     } },
@@ -647,7 +698,7 @@ function focusKategorien(body) {
     ],
     series: [
       { type: "bar", barMaxWidth: 16, cursor: "pointer",
-        data: list.map((x) => ({ value: x.ist, itemStyle: { color: x.over ? t.bad : x.id === dash.selectedCat ? t.ink2 : t.ink3, borderRadius: [0, 4, 4, 0] } })) },
+        data: list.map((x) => ({ value: x.ist, itemStyle: { color: x.over ? t.bad : x.id === dash.selectedCat ? t.sky : UI.alpha(t.sky, 0.55), borderRadius: [0, 6, 6, 0] } })) },
       { type: "scatter", symbol: "rect", symbolSize: [3, 24], z: 5, silent: true, itemStyle: { color: t.ink1 },
         data: list.map((x) => (x.toDate != null ? x.toDate : null)) },
     ],
@@ -672,10 +723,10 @@ function renderCatTrend(body) {
     xAxis: monthAxis(t, months),
     yAxis: UI.valueAxis(t),
     tooltip: { ...UI.chartBase(t).tooltip, axisPointer: { type: "shadow", shadowStyle: { color: t.grid, opacity: 0.4 } },
-      formatter: (ps) => `<b>${monthLong(months[ps[0].dataIndex])}</b>` + UI.tipRow(UI.mark(t.ink2), x.name, money0(values[ps[0].dataIndex] * 100)) +
+      formatter: (ps) => `<b>${monthLong(months[ps[0].dataIndex])}</b>` + UI.tipRow(UI.mark(t.sky), x.name, money0(values[ps[0].dataIndex] * 100)) +
         (x.soll ? UI.tipRow(UI.mark(t.ink1, true), "Soll", money0(x.soll * 100)) : "") },
     series: [{ type: "bar", barMaxWidth: 24,
-      data: values.map((v, i) => ({ value: v, itemStyle: { borderRadius: [4, 4, 0, 0], color: months[i] === dash.ym ? t.ink4 : x.soll && v > x.soll * (1 + TOLERANCE) ? t.bad : t.ink3 } })),
+      data: values.map((v, i) => ({ value: v, itemStyle: { borderRadius: [4, 4, 0, 0], color: months[i] === dash.ym ? UI.alpha(t.sky, 0.35) : x.soll && v > x.soll * (1 + TOLERANCE) ? t.bad : t.sky } })),
       markLine: x.soll ? { symbol: "none", silent: true, data: [{ yAxis: x.soll }], lineStyle: { color: t.ink1, type: "dashed", width: 1.5 },
         label: { formatter: `Soll ${UI.moneyShort(x.soll)}`, color: t.text, position: "insideEndTop", fontSize: 11.5 } } : undefined }],
   }, true);
@@ -713,9 +764,9 @@ const zoom = new UI.Zoom({
   prefix: "dashboard/",
   context,
   items: {
-    ausgaben: { label: "Ausgaben", focus: focusAusgaben, depth: depthAusgaben, depthLabel: "Tabelle" },
-    sparquote: { label: "Sparquote", focus: focusSparquote, depth: depthSparquote, depthLabel: "Tabelle" },
-    kategorien: { label: "Kategorien", focus: focusKategorien, depth: depthKategorien, depthLabel: "Tabelle" },
+    ausgaben: { label: "Ausgaben", tone: "violet", focus: focusAusgaben, depth: depthAusgaben, depthLabel: "Tabelle" },
+    sparquote: { label: "Sparquote", tone: "teal", focus: focusSparquote, depth: depthSparquote, depthLabel: "Tabelle" },
+    kategorien: { label: "Kategorien", tone: "sky", focus: focusKategorien, depth: depthKategorien, depthLabel: "Tabelle" },
   },
   onEscapeTop: () => {
     if (state.view === "dashboard") return;
@@ -1025,6 +1076,11 @@ function wire() {
     const el = e.target.closest(".blick-tile");
     if (el && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openTile(el); }
   });
+  $$("#view-switch button").forEach((b) => (b.onclick = () => {
+    blickMode = b.dataset.mode;
+    try { localStorage.setItem("blickMode", blickMode); } catch { /* egal */ }
+    applyBlickMode(true);
+  }));
   $("#crumbs").addEventListener("click", (e) => {
     const a = e.target.closest("[data-home], [data-return]");
     if (!a || state.view === "dashboard") return;
@@ -1138,6 +1194,7 @@ async function poll() {
 }
 
 async function init() {
+  UI.initMotion();
   wire();
   const params = new URLSearchParams(location.search);
   state.account = params.get("account") || "";

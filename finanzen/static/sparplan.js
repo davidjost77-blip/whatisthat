@@ -81,7 +81,8 @@ const goalMonth = () => monthOf(`${goalYear()}-12`);
 // Reihen unterscheiden sich über Helligkeit + direkte Beschriftung, nicht über Farbe (DESIGN.md §5).
 function shade(slot) {
   const t = UI.theme();
-  return [t.ink1, t.ink2, t.ink3, t.ink2, t.ink3, t.ink2, t.ink3, t.ink2][slot] || t.ink3;
+  // Plan-ETF in Türkis, weitere ETFs in den übrigen Identitätsfarben, danach Abstufungen
+  return [t.teal, t.sky, t.violet, t.gold, UI.alpha(t.teal, 0.55), UI.alpha(t.sky, 0.55), UI.alpha(t.violet, 0.55), UI.alpha(t.gold, 0.55)][slot] || t.ink3;
 }
 const alpha = (color, a) => {
   if (color.startsWith("#")) {
@@ -245,9 +246,11 @@ function goalCalc() {
 }
 
 // ------------------------------------------------------------------ Blick
+const TONES = { depot: ["gold", "balloon", "Depot heute"], takt: ["sky", "stones", "Sparplan-Takt"], ziel: ["violet", "mountain", "Ziel"], spiel: ["teal", "signpost", "Was wäre wenn"] };
 function tile(key, { q, verdict, cls = "", metaphor, facts }) {
-  return `<div class="blick-tile" role="button" tabindex="0" data-key="${key}" aria-label="${esc(q)}: ${esc(verdict.replace(/<[^>]+>/g, ""))}. Öffnen">
-    <span class="q">${esc(q)}</span><span class="more-hint" aria-hidden="true">Fokus ↗</span>
+  const [tone, icon] = TONES[key];
+  return `<div class="blick-tile" role="button" tabindex="0" data-key="${key}" data-tone="${tone}" aria-label="${esc(q)}: ${esc(verdict.replace(/<[^>]+>/g, ""))}. Öffnen">
+    <span class="q">${UI.icon(icon)}${esc(q)}</span><span class="more-hint" aria-hidden="true">Fokus ↗</span>
     <span class="verdict ${cls}">${verdict}</span>
     <div class="metaphor">${metaphor}</div>
     <div class="facts">${facts.map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join("")}</div>
@@ -319,11 +322,51 @@ function renderBlick() {
     facts: [["Mittlerer Verlauf", UI.amount(res.total[res.months], moneyShort)], ["Eingezahlt", moneyShort(res.invested[res.months])],
       ["Bandbreite", `${moneyShort(res.bands.p10[res.months])} – ${moneyShort(res.bands.p90[res.months])}`]],
   }));
+  const firstTiles = !$("#blick").children.length;
   $("#blick").innerHTML = tiles.join("");
+  renderScene({ d, r, rec, g, res });
+  applyBlickMode(firstTiles);
+}
+
+// ---------- Metapher-Bild „Bergtour“ (DESIGN.md §8)
+function renderScene({ d, r, rec, g, res }) {
+  const diff = d.value - d.invested;
+  const s = scen();
+  const scenarios = state.result.scenarios.map((x) => ({ name: x.name, value: x.r.total[x.r.months], text: moneyShort(x.r.total[x.r.months]), active: Math.abs(s.ret - x.ret) < 0.01 }));
+  const takBad = r.missing.length > 0 || (rec && !rec.ok);
+  const data = {
+    depot: { value: d.value, invested: d.invested, investedText: money0(d.invested), bad: diff < 0,
+      text: `${diff < 0 ? "⚠ " : ""}${money0(d.value)}`, sub: `${signed(diff, money0)} ggü. Einzahlungen · ${UI.equiv(d.value)}` },
+    takt: { months: r.months, bad: takBad,
+      text: r.missing.length ? `⚠ ${r.missing.length} Rate fehlt` : rec && !rec.ok ? `⚠ Abgleich: ${money0(Math.abs(rec.diff))} Differenz` : `${r.done} von ${r.due || r.done} Raten im Takt`,
+      sub: `${money0(state.settings.plan.rate)} am ${state.settings.plan.day}.` },
+    ziel: { median: g.r.total, p10: g.r.bands.p10, p90: g.r.bands.p90, goal: goalAmount(), reached: g.reached,
+      goalText: `${g.reached ? "✓" : "⚠"} ${moneyShort(goalAmount())} · ${goalYear()}`,
+      text: g.reached ? `✓ Ziel ${goalYear()} erreichbar` : `⚠ ${moneyShort(g.median)} statt ${moneyShort(goalAmount())}`,
+      sub: `Chance ${Math.round(g.prob * 10)} von 10 · ${g.reached ? "Mindestrate" : "nötig"} ${money0(g.need)} / Monat`,
+      startLabel: "heute", endLabel: String(goalYear()) },
+    spiel: { scenarios, text: `${moneyShort(res.total[res.months])} in ${s.years} Jahren` },
+  };
+  Scene.mount($("#scene"), Scene.plan(data), (key, el) => zoom.open(key, 2, el));
+}
+
+// Standard: Bild; auf schmalen Bildschirmen Kacheln, weil das Bild dort zu klein zum Lesen wäre
+let blickMode = (() => {
+  const fallback = matchMedia("(max-width: 700px)").matches ? "kacheln" : "bild";
+  try { return localStorage.getItem("blickMode") || fallback; } catch { return fallback; }
+})();
+function applyBlickMode(enter = false) {
+  $("#scene").hidden = blickMode !== "bild";
+  $("#blick").hidden = blickMode !== "kacheln";
+  $$("#view-switch button").forEach((b) => b.classList.toggle("active", b.dataset.mode === blickMode));
+  if (enter && blickMode === "kacheln") UI.enter($$("#blick .blick-tile"));
 }
 
 // ------------------------------------------------------------------ Fokus-Bausteine
-const focusHead = (title, sub, bad) => `<div class="focus-head"><div><h1 class="${bad ? "bad" : ""}">${title}</h1><p>${sub}</p></div></div>`;
+const focusHead = (title, sub, bad, key = zoom.key) => {
+  const [, icon, name] = TONES[key] || [];
+  return `<div class="focus-head"><div>${icon ? `<div class="tone-chip">${UI.icon(icon)}${name}</div>` : ""}<h1 class="${bad ? "bad" : ""}">${title}</h1><p>${sub}</p></div></div>`;
+};
 const cmpRow = (k, v, s = "", bad = false) => `<div class="row"><span class="k">${k}</span><span class="v ${bad ? "sig-bad" : ""}">${v}</span>${s ? `<span class="s">${s}</span>` : ""}</div>`;
 const depthButton = `<div class="to-depth"><button type="button" class="primary" data-depth>Exakte Zahlen (Tiefe) ↘</button></div>`;
 function wireDepth(body, key) {
@@ -383,15 +426,15 @@ async function renderHistory(body) {
       tooltip: { ...base.tooltip, formatter: (ps) => {
         const h = hist[ps[0].dataIndex];
         if (!h) return "";
-        return `<b>${dateDe(h.date)}</b>${h.buy ? " · Kauf" : ""}` + UI.tipRow(UI.mark(h.value < h.invested ? t.bad : t.ink1), "Depotwert", money(h.value)) +
+        return `<b>${dateDe(h.date)}</b>${h.buy ? " · Kauf" : ""}` + UI.tipRow(UI.mark(h.value < h.invested ? t.bad : t.gold), "Depotwert", money(h.value)) +
           UI.tipRow(UI.mark(t.ink2, true), "Eingezahlt", money(h.invested)) + UI.tipRow("", "Kurs", money(h.price)) + `<div style="color:${t.muted}">${UI.equiv(h.value)}</div>`;
       } },
       // Linie ist grau; nur Abschnitte unter der Einzahlungslinie werden farbig (visualMap auf die Differenz)
       series: [
         { name: "Eingezahlt", type: "line", step: "end", data: hist.map((h) => [h.date, h.invested]), showSymbol: false, lineStyle: { width: 1.5, type: "dashed", color: t.ink2 }, itemStyle: { color: t.ink2 } },
-        { name: "Depotwert", type: "line", data: hist.map((h) => [h.date, h.value]), showSymbol: false, lineStyle: { width: 2.5, color: t.ink1 }, itemStyle: { color: t.ink1 }, areaStyle: { color: alpha(t.ink4, 0.7) } },
+        { name: "Depotwert", type: "line", data: hist.map((h) => [h.date, h.value]), showSymbol: false, lineStyle: { width: 3, color: t.gold }, itemStyle: { color: t.gold }, areaStyle: { color: UI.areaFill(t.gold, 0.4) } },
         { name: "Unter Einzahlung", type: "scatter", data: hist.filter((h) => h.value < h.invested).map((h) => [h.date, h.value]), symbolSize: 4, itemStyle: { color: t.bad }, tooltip: { show: false } },
-        { name: "Käufe", type: "scatter", data: buys.map((h) => [h.date, h.value]), symbolSize: 9, z: 5, tooltip: { show: false }, itemStyle: { color: t.ink1, borderColor: t.surface, borderWidth: 2 } },
+        { name: "Käufe", type: "scatter", data: buys.map((h) => [h.date, h.value]), symbolSize: 9, z: 5, tooltip: { show: false }, itemStyle: { color: t.gold, borderColor: t.surface, borderWidth: 2 } },
       ],
     }, true);
     legend.innerHTML = `<span><i class="line"></i>Depotwert</span><span><i class="dash"></i>Eingezahlt (Soll)</span>${below ? `<span><i class="bad"></i>unter Einzahlungen</span>` : ""}`;
@@ -406,9 +449,9 @@ async function renderHistory(body) {
     ...base,
     xAxis: timeAxis,
     yAxis: { ...UI.valueAxis(t, (v) => money0(v)), scale: true },
-    tooltip: { ...base.tooltip, formatter: (ps) => `<b>${dateDe(ps[0].value[0])}</b>` + UI.tipRow(UI.mark(t.ink1), "Kurs", money(ps[0].value[1])) + (avg ? UI.tipRow(UI.mark(t.ink2, true), "Ø Kaufkurs", money(avg)) : "") },
+    tooltip: { ...base.tooltip, formatter: (ps) => `<b>${dateDe(ps[0].value[0])}</b>` + UI.tipRow(UI.mark(t.gold), "Kurs", money(ps[0].value[1])) + (avg ? UI.tipRow(UI.mark(t.ink2, true), "Ø Kaufkurs", money(avg)) : "") },
     series: [{
-      name: "Kurs", type: "line", data: points, showSymbol: false, lineStyle: { width: 2, color: t.ink1 }, itemStyle: { color: t.ink1 }, areaStyle: { color: alpha(t.ink4, 0.6) },
+      name: "Kurs", type: "line", data: points, showSymbol: false, lineStyle: { width: 2.5, color: t.gold }, itemStyle: { color: t.gold }, areaStyle: { color: UI.areaFill(t.gold, 0.35) },
       markLine: avg ? { symbol: "none", silent: true, data: [{ yAxis: avg }], lineStyle: { color: t.ink2, type: "dashed", width: 1.5 },
         label: { formatter: `Ø ${money(avg)}`, color: t.text2, position: "insideEndTop", fontSize: 11 } } : undefined,
     }],
@@ -446,13 +489,13 @@ function focusTakt(body) {
     yAxis: UI.valueAxis(t),
     tooltip: { ...UI.chartBase(t).tooltip, axisPointer: { type: "shadow", shadowStyle: { color: t.grid, opacity: 0.4 } }, formatter: (ps) => {
       const i = ps[0].dataIndex, m = r.months[i];
-      return `<b>${MONTHS_LONG[+m.ym.slice(5) - 1]} ${m.ym.slice(0, 4)}</b>` + UI.tipRow(UI.mark(t.ink2), "Eingezahlt", money(r.invested[i])) +
+      return `<b>${MONTHS_LONG[+m.ym.slice(5) - 1]} ${m.ym.slice(0, 4)}</b>` + UI.tipRow(UI.mark(t.sky), "Eingezahlt", money(r.invested[i])) +
         UI.tipRow(UI.mark(t.ink1, true), "Soll", money(rate)) + `<div style="color:${t.muted}">${m.done ? "Kauf erfasst" : m.due ? "kein Kauf erfasst" : "noch nicht fällig"}</div>`;
     } },
     series: [{ type: "bar", barMaxWidth: 34,
       // fehlende Monate als flache farbige Markierung, damit sie sichtbar sind
       data: r.months.map((m, i) => ({ value: m.due && !m.done ? rate * 0.06 : r.invested[i],
-        itemStyle: { borderRadius: [4, 4, 0, 0], color: m.due && !m.done ? t.bad : m.done ? t.ink3 : t.ink4 } })),
+        itemStyle: { borderRadius: [4, 4, 0, 0], color: m.due && !m.done ? t.bad : m.done ? t.sky : UI.alpha(t.sky, 0.25) } })),
       markLine: { symbol: "none", silent: true, data: [{ yAxis: rate }], lineStyle: { color: t.ink1, type: "dashed", width: 1.5 },
         label: { formatter: `Soll ${money0(rate)}`, color: t.text, position: "insideEndTop", fontSize: 11.5 } } }],
   });
@@ -544,7 +587,7 @@ function focusZiel(body) {
     `<div class="focus-grid"><div style="display:flex;flex-direction:column;gap:16px;min-width:0">
       <section class="focus-card"><h2>Trend: Weg zum Ziel</h2><p>Mittlerer Verlauf und Bandbreite aus 600 simulierten Börsenverläufen; waagerecht das Ziel (Soll)</p>
         <div class="chart" id="f-goal" style="height:min(50vh,440px)"></div>
-        <div class="legend-inline"><span><i class="line"></i>Mittlerer Verlauf</span><span><i style="background:${t.ink3}"></i>5 von 10 Verläufen</span><span><i style="background:${t.ink4}"></i>8 von 10</span><span><i class="dash"></i>Eingezahlt</span><span><i class="${g.reached ? "line" : "bad"}" style="height:2px"></i>Ziel</span></div></section>
+        <div class="legend-inline"><span><i class="line" style="background:${t.violet}"></i>Mittlerer Verlauf</span><span><i style="background:${UI.alpha(t.violet, 0.35)}"></i>5 von 10 Verläufen</span><span><i style="background:${UI.alpha(t.violet, 0.15)}"></i>8 von 10</span><span><i class="dash"></i>Eingezahlt</span><span><i class="line" style="background:${g.reached ? t.good : t.bad}"></i>Ziel</span></div></section>
       <section class="focus-card"><h2>Meilensteine</h2><p>Wann der mittlere Verlauf welche Summe erreicht, in Klammern die Bandbreite</p><ol class="milestones" id="milestones"></ol></section>
     </div><aside class="focus-card compare">
       ${cmpRow("Ziel (Soll)", moneyShort(goal), UI.equiv(goal))}
@@ -569,7 +612,7 @@ function focusZiel(body) {
   const b = r.bands;
   const labels = Array.from({ length: g.month + 1 }, (_, m) => m);
   const diff = (hi, lo) => hi.map((v, i) => v - lo[i]);
-  const goalColor = g.reached ? t.ink1 : t.bad;
+  const goalColor = g.reached ? t.good : t.bad;
   const chart = mkChart($("#f-goal", body), 2);
   const base = UI.chartBase(t);
   chart.setOption({
@@ -579,20 +622,20 @@ function focusZiel(body) {
     yAxis: UI.valueAxis(t),
     tooltip: { ...base.tooltip, formatter: (ps) => {
       const m = ps[0].dataIndex;
-      return `<b>${monthLabel(m)}</b>` + UI.tipRow(UI.mark(t.ink1), "Mittlerer Verlauf", money0(r.total[m])) +
-        UI.tipRow(UI.mark(t.ink3), "5 von 10", `${moneyShort(b.p25[m])} – ${moneyShort(b.p75[m])}`) + UI.tipRow(UI.mark(t.ink4), "8 von 10", `${moneyShort(b.p10[m])} – ${moneyShort(b.p90[m])}`) +
+      return `<b>${monthLabel(m)}</b>` + UI.tipRow(UI.mark(t.violet), "Mittlerer Verlauf", money0(r.total[m])) +
+        UI.tipRow(UI.mark(UI.alpha(t.violet, 0.35)), "5 von 10", `${moneyShort(b.p25[m])} – ${moneyShort(b.p75[m])}`) + UI.tipRow(UI.mark(UI.alpha(t.violet, 0.15)), "8 von 10", `${moneyShort(b.p10[m])} – ${moneyShort(b.p90[m])}`) +
         UI.tipRow(UI.mark(t.ink2, true), "Eingezahlt", money0(r.invested[m])) + `<div style="color:${t.muted}">${UI.equiv(r.total[m])}</div>`;
     } },
     series: [
       { type: "line", data: b.p10, stack: "o", showSymbol: false, lineStyle: { opacity: 0 }, silent: true },
-      { type: "line", data: diff(b.p90, b.p10), stack: "o", showSymbol: false, lineStyle: { opacity: 0 }, areaStyle: { color: t.ink4, opacity: 0.9 }, silent: true },
+      { type: "line", data: diff(b.p90, b.p10), stack: "o", showSymbol: false, lineStyle: { opacity: 0 }, areaStyle: { color: UI.alpha(t.violet, 0.13) }, silent: true },
       { type: "line", data: b.p25, stack: "i", showSymbol: false, lineStyle: { opacity: 0 }, silent: true },
-      { type: "line", data: diff(b.p75, b.p25), stack: "i", showSymbol: false, lineStyle: { opacity: 0 }, areaStyle: { color: t.ink3, opacity: 0.55 }, silent: true },
+      { type: "line", data: diff(b.p75, b.p25), stack: "i", showSymbol: false, lineStyle: { opacity: 0 }, areaStyle: { color: UI.alpha(t.violet, 0.22) }, silent: true },
       { type: "line", data: r.invested, showSymbol: false, lineStyle: { width: 1.5, type: "dashed", color: t.ink2 } },
-      { type: "line", data: r.total, showSymbol: false, z: 5, lineStyle: { width: 2.5, color: t.ink1 },
+      { type: "line", data: r.total, showSymbol: false, z: 5, lineStyle: { width: 3, color: t.violet },
         endLabel: { show: true, formatter: (p) => moneyShort(p.value), color: t.text, fontWeight: 600 },
         markLine: { symbol: "none", silent: true, data: [{ yAxis: goal }], lineStyle: { color: goalColor, width: 2, type: "solid" },
-          label: { formatter: `${g.reached ? "" : "⚠ "}Ziel ${moneyShort(goal)}`, color: goalColor, position: "insideStartTop", fontWeight: 600 } } },
+          label: { formatter: `${g.reached ? "✓ " : "⚠ "}Ziel ${moneyShort(goal)}`, color: goalColor, position: "insideStartTop", fontWeight: 600 } } },
     ],
     grid: { ...base.grid, right: 96 },
   });
@@ -739,7 +782,7 @@ function renderOutcome() {
   k("s2").textContent = invested > 0 ? `${pctFmt.format(Math.round((value / invested) * 10) / 10)}-fache deiner Einzahlungen` : "";
   const share = value > 0 ? Math.max(0, Math.min(1, invested / value)) : 1;
   const t = UI.theme();
-  k("bar").innerHTML = `<span style="width:${share * 100}%;background:${t.ink3}"></span><span style="width:${(1 - share) * 100}%;background:${t.ink1}"></span>`;
+  k("bar").innerHTML = `<span style="width:${share * 100}%;background:${t.ink3}"></span><span style="width:${(1 - share) * 100}%;background:${t.teal}"></span>`;
   const withdraw = (value * 0.04) / 12;
   UI.animateNumber(k("v3"), withdraw, money0);
   const fixed = UI.basis().fixed;
@@ -777,22 +820,22 @@ function renderProjection() {
       tooltip: { ...base.tooltip, formatter: (ps) => {
         const m = ps[0].dataIndex;
         return `<b>${monthLabel(m)}</b>${m ? ` <span style="color:${t.muted}">· in ${durationText(m)}</span>` : ""}` +
-          UI.tipRow(UI.mark(t.ink1), "Mittlerer Verlauf", money0(r.total[m])) + UI.tipRow(UI.mark(t.ink3), "5 von 10 Verläufen", `${moneyShort(b.p25[m])} – ${moneyShort(b.p75[m])}`) +
-          UI.tipRow(UI.mark(t.ink4), "8 von 10 Verläufen", `${moneyShort(b.p10[m])} – ${moneyShort(b.p90[m])}`) + UI.tipRow(UI.mark(t.ink2, true), "Eingezahlt", money0(r.invested[m])) +
+          UI.tipRow(UI.mark(t.teal), "Mittlerer Verlauf", money0(r.total[m])) + UI.tipRow(UI.mark(UI.alpha(t.teal, 0.35)), "5 von 10 Verläufen", `${moneyShort(b.p25[m])} – ${moneyShort(b.p75[m])}`) +
+          UI.tipRow(UI.mark(UI.alpha(t.teal, 0.15)), "8 von 10 Verläufen", `${moneyShort(b.p10[m])} – ${moneyShort(b.p90[m])}`) + UI.tipRow(UI.mark(t.ink2, true), "Eingezahlt", money0(r.invested[m])) +
           `<div style="color:${t.muted}">${UI.equiv(r.total[m])}</div>`;
       } },
       series: [
         { type: "line", data: b.p10, stack: "outer", showSymbol: false, lineStyle: { opacity: 0 }, silent: true },
-        { type: "line", data: diff(b.p90, b.p10), stack: "outer", showSymbol: false, lineStyle: { opacity: 0 }, areaStyle: { color: t.ink4, opacity: 0.9 }, silent: true },
+        { type: "line", data: diff(b.p90, b.p10), stack: "outer", showSymbol: false, lineStyle: { opacity: 0 }, areaStyle: { color: UI.alpha(t.teal, 0.13) }, silent: true },
         { type: "line", data: b.p25, stack: "inner", showSymbol: false, lineStyle: { opacity: 0 }, silent: true },
-        { type: "line", data: diff(b.p75, b.p25), stack: "inner", showSymbol: false, lineStyle: { opacity: 0 }, areaStyle: { color: t.ink3, opacity: 0.55 }, silent: true },
+        { type: "line", data: diff(b.p75, b.p25), stack: "inner", showSymbol: false, lineStyle: { opacity: 0 }, areaStyle: { color: UI.alpha(t.teal, 0.24) }, silent: true },
         invested,
-        { name: "Mittlerer Verlauf", type: "line", data: r.total, showSymbol: false, z: 5, lineStyle: { width: 2.5, color: t.ink1 }, itemStyle: { color: t.ink1 },
+        { name: "Mittlerer Verlauf", type: "line", data: r.total, showSymbol: false, z: 5, lineStyle: { width: 3, color: t.teal }, itemStyle: { color: t.teal },
           endLabel: { show: true, formatter: (p) => moneyShort(p.value), color: t.text, fontWeight: 600, fontSize: 12, distance: 6 }, markLine: goalLine },
       ],
       grid: { ...base.grid, right: 84 },
     }, true);
-    legend.innerHTML = `<span><i class="line"></i>Mittlerer Verlauf</span><span><i style="background:${t.ink3}"></i>5 von 10 Verläufen</span><span><i style="background:${t.ink4}"></i>8 von 10 Verläufen</span><span><i class="dash"></i>Eingezahlt</span>`;
+    legend.innerHTML = `<span><i class="line" style="background:${t.teal}"></i>Mittlerer Verlauf</span><span><i style="background:${UI.alpha(t.teal, 0.35)}"></i>5 von 10 Verläufen</span><span><i style="background:${UI.alpha(t.teal, 0.15)}"></i>8 von 10 Verläufen</span><span><i class="dash"></i>Eingezahlt</span>`;
   } else if (state.projView === "split") {
     $("#proj-sub", root).textContent = `Was du einzahlst und was der Zinseszins daraus macht${kk}`;
     const gain = r.total.map((v, i) => Math.max(0, v - r.invested[i]));
@@ -800,23 +843,23 @@ function renderProjection() {
       ...base, xAxis, yAxis: UI.valueAxis(t),
       tooltip: { ...base.tooltip, formatter: (ps) => {
         const m = ps[0].dataIndex;
-        return `<b>${monthLabel(m)}</b>` + UI.tipRow(UI.mark(t.ink1), "Erträge", `${money0(gain[m])} · ${Math.round(r.total[m] ? (gain[m] / r.total[m]) * 100 : 0)} %`) +
+        return `<b>${monthLabel(m)}</b>` + UI.tipRow(UI.mark(t.teal), "Erträge", `${money0(gain[m])} · ${Math.round(r.total[m] ? (gain[m] / r.total[m]) * 100 : 0)} %`) +
           UI.tipRow(UI.mark(t.ink3), "Eingezahlt", money0(r.invested[m])) + UI.tipRow("", "Summe", money0(r.total[m]));
       } },
       series: [
         { name: "Eingezahlt", type: "line", stack: "s", data: r.invested, showSymbol: false, lineStyle: { width: 2, color: t.surface }, areaStyle: { color: t.ink3, opacity: 0.8 },
           endLabel: { show: true, formatter: "eingezahlt", color: t.text2, fontSize: 11.5 } },
-        { name: "Erträge", type: "line", stack: "s", data: gain, showSymbol: false, lineStyle: { width: 2, color: t.surface }, areaStyle: { color: t.ink1, opacity: 0.85 },
+        { name: "Erträge", type: "line", stack: "s", data: gain, showSymbol: false, lineStyle: { width: 2, color: t.surface }, areaStyle: { color: t.teal, opacity: 0.85 },
           endLabel: { show: true, formatter: () => moneyShort(r.total[r.months]), color: t.text, fontWeight: 600, fontSize: 12, distance: 6 } },
       ],
       grid: { ...base.grid, right: 84 },
     }, true);
     const cross = r.total.findIndex((v, i) => i > 0 && v - r.invested[i] > r.invested[i]);
-    legend.innerHTML = `<span><i style="background:${t.ink3}"></i>Eingezahlt</span><span><i style="background:${t.ink1}"></i>Erträge (Zinseszins)</span>` +
+    legend.innerHTML = `<span><i style="background:${t.ink3}"></i>Eingezahlt</span><span><i style="background:${t.teal}"></i>Erträge (Zinseszins)</span>` +
       (cross > 0 ? `<span>Ab ${monthLabel(cross)} arbeitet dein Geld mehr als du einzahlst.</span>` : "");
   } else {
     $("#proj-sub", root).textContent = `Beitrag jedes ETFs zum mittleren Verlauf${kk}`;
-    const shades = pos.map((_, i) => [t.ink1, t.ink2, t.ink3, t.ink4][Math.min(i, 3)]);
+    const shades = pos.map((p) => shade(p.slot));
     c.setOption({
       ...base, xAxis, yAxis: UI.valueAxis(t),
       tooltip: { ...base.tooltip, formatter: (ps) => {
@@ -861,8 +904,8 @@ function scenarioLine(values, max, t) {
   const step = Math.max(1, Math.floor(values.length / 90));
   const pts = values.filter((_, i) => i % step === 0 || i === values.length - 1);
   const d = pts.map((v, i) => `${i ? "L" : "M"}${((i / (pts.length - 1)) * w).toFixed(1)},${(h - 2 - (v / max) * (h - 4)).toFixed(1)}`).join("");
-  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><path d="${d}L${w},${h}L0,${h}Z" fill="${t.ink4}"/>
-    <path d="${d}" fill="none" stroke="${t.ink1}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><path d="${d}L${w},${h}L0,${h}Z" fill="${UI.alpha(t.teal, 0.16)}"/>
+    <path d="${d}" fill="none" stroke="${t.teal}" stroke-width="2.5" vector-effect="non-scaling-stroke"/></svg>`;
 }
 
 // ---------- ETF-Baukasten
@@ -1047,10 +1090,10 @@ const zoom = new UI.Zoom({
   overview: "Sparplan",
   context: () => context(),
   items: {
-    depot: { label: "Depot heute", focus: focusDepot, depth: depthLedger, depthLabel: "Käufe" },
-    takt: { label: "Sparplan-Takt", focus: focusTakt, depth: depthLedger, depthLabel: "Käufe" },
-    ziel: { label: "Ziel", focus: focusZiel, depth: depthZiel, depthLabel: "Tabelle" },
-    spiel: { label: "Was wäre wenn", focus: focusSpiel, depth: depthSpiel, depthLabel: "Tabelle" },
+    depot: { label: "Depot heute", tone: "gold", focus: focusDepot, depth: depthLedger, depthLabel: "Käufe" },
+    takt: { label: "Sparplan-Takt", tone: "sky", focus: focusTakt, depth: depthLedger, depthLabel: "Käufe" },
+    ziel: { label: "Ziel", tone: "violet", focus: focusZiel, depth: depthZiel, depthLabel: "Tabelle" },
+    spiel: { label: "Was wäre wenn", tone: "teal", focus: focusSpiel, depth: depthSpiel, depthLabel: "Tabelle" },
   },
   // Esc im Blick führt zurück zur Übersicht der Finanzen
   onEscapeTop: () => UI.zoomTo("./#dashboard", null),
@@ -1065,6 +1108,11 @@ async function reloadDepot() {
 }
 
 function wire() {
+  $$("#view-switch button").forEach((b) => (b.onclick = () => {
+    blickMode = b.dataset.mode;
+    try { localStorage.setItem("blickMode", blickMode); } catch { /* egal */ }
+    applyBlickMode(true);
+  }));
   const openTile = (el) => zoom.open(el.dataset.key, 2, el);
   $("#blick").addEventListener("click", (e) => { const el = e.target.closest(".blick-tile"); if (el) openTile(el); });
   $("#blick").addEventListener("keydown", (e) => {
@@ -1137,6 +1185,7 @@ async function init() {
     toast(`Server nicht erreichbar: ${e.message}`, { error: true });
     return;
   }
+  UI.initMotion();
   wire();
   await loadQuote(PLAN());
   renderLiveChip();

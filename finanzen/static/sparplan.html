@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sparplan</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231f1f1d'/><path d='M8 23 C13 22 17 17 24 9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round'/></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%237c5cff'/><path d='M8 23 C13 22 17 17 24 9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round'/></svg>">
   <link rel="stylesheet" href="app.css">
   <link rel="stylesheet" href="sparplan.css">
 </head>
 <body class="sp">
   <header class="topbar">
     <div class="brand">
-      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--ink-1)"/><path d="M8 22 L14 15 L18 19 L24 10" stroke="var(--surface-1)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><defs><linearGradient id="brandgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c5cff"/><stop offset=".55" stop-color="#2f8ff0"/><stop offset="1" stop-color="#0ea5a0"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="url(#brandgrad)"/><path d="M8 22 L14 15 L18 19 L24 10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span>Finanzen</span>
     </div>
     <nav class="tabs">
@@ -28,7 +28,15 @@
 
   <main>
     <!-- Blick: vier Kacheln (DESIGN.md) -->
-    <div class="blick" id="blick" aria-label="Sparplan auf einen Blick"></div>
+    <div class="blick-bar">
+      <h1>Dein Sparplan <span>als Bergtour</span></h1>
+      <div class="seg view-switch" id="view-switch" role="group" aria-label="Darstellung">
+        <button type="button" data-mode="bild">Bild</button>
+        <button type="button" data-mode="kacheln">Kacheln</button>
+      </div>
+    </div>
+    <div class="scene" id="scene" aria-label="Metapher-Bild"></div>
+    <div class="blick" id="blick" aria-label="Sparplan auf einen Blick" hidden></div>
     <p class="blick-foot muted" id="blick-foot">Kachel anklicken für den Fokus, <kbd>Esc</kbd> geht eine Stufe zurück.
       Projektionen sind Modellrechnungen, keine Prognose und keine Anlageberatung. Kurse: Yahoo Finance (verzögert).</p>
   </main>
@@ -181,6 +189,7 @@
   <script src="vendor/echarts.min.js"></script>
   <script src="vendor/motion.js"></script>
   <script src="ui-core.js"></script>
+  <script src="scene.js"></script>
   <script src="sparplan-model.js"></script>
   <script src="sparplan.js"></script>
 </body>

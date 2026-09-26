@@ -63,15 +63,17 @@
   UI.theme = () => ({
     ink1: css("--ink-1"), ink2: css("--ink-2"), ink3: css("--ink-3"), ink4: css("--ink-4"),
     bad: css("--signal-bad"), good: css("--signal-good"),
+    violet: css("--c-violet"), teal: css("--c-teal"), sky: css("--c-sky"), gold: css("--c-gold"),
     surface: css("--surface-1"), surface2: css("--surface-2"), text: css("--text-primary"), text2: css("--text-secondary"),
     muted: css("--axis-muted"), grid: css("--grid"), baseline: css("--baseline"), font: css("--font"),
   });
-  UI.reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  UI.reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches || document.body?.classList.contains("no-motion");
   UI.chartBase = (t) => ({
     backgroundColor: "transparent",
     textStyle: { fontFamily: t.font, color: t.text2 },
-    animationDuration: UI.reducedMotion() ? 0 : 280,
-    animationDurationUpdate: UI.reducedMotion() ? 0 : 280,
+    animationDuration: UI.reducedMotion() ? 0 : 900,
+    animationEasing: "cubicOut",
+    animationDurationUpdate: UI.reducedMotion() ? 0 : 350,
     tooltip: {
       trigger: "axis", backgroundColor: t.surface, borderColor: t.grid, borderWidth: 1, padding: [8, 12],
       textStyle: { color: t.text, fontSize: 12.5 }, extraCssText: "box-shadow: 0 6px 20px rgba(0,0,0,.14); border-radius: 8px;",
@@ -113,9 +115,68 @@
     </div>`;
   };
 
+  /** Elementfarbe als Hex, z. B. UI.tone("violet"). */
+  UI.tone = (name) => css(`--c-${name}`) || css("--ink-1");
+  /** Transparente Variante einer Hex-Farbe (ECharts kennt kein color-mix). */
+  UI.alpha = (hex, a) => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
+    if (!m) return hex;
+    const n = parseInt(m[1], 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  };
+  /** Verlaufsfläche unter einer Linie in Elementfarbe. */
+  UI.areaFill = (hex, top = 0.35) => new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: UI.alpha(hex, top) }, { offset: 1, color: UI.alpha(hex, 0) }]);
+
+  // ------------------------------------------------------------------ Symbole je Element
+  const ICONS = {
+    tank: '<rect x="5" y="3" width="14" height="18" rx="4"/><path d="M5 13c2.5-1.5 4.5 1.5 7 0s4.5 1.5 7 0"/>',
+    plant: '<path d="M12 21v-9"/><path d="M12 12c0-4 3-6 7-6 0 4-3 6-7 6z"/><path d="M12 14c0-3-2.5-5-6-5 0 3 2.5 5 6 5z"/><path d="M8 21h8"/>',
+    cloud: '<path d="M7 18h10a4 4 0 0 0 0-8 6 6 0 0 0-11.5 1.5A3.5 3.5 0 0 0 7 18z"/>',
+    boat: '<path d="M3 16h18l-3 4H6z"/><path d="M12 3v12"/><path d="M12 4l6 10h-6"/>',
+    balloon: '<path d="M12 3a6 6 0 0 0-6 6c0 4 4 7 6 8 2-1 6-4 6-8a6 6 0 0 0-6-6z"/><path d="M10 17l1 3h2l1-3"/>',
+    stones: '<ellipse cx="6" cy="16" rx="3.5" ry="2"/><ellipse cx="13" cy="13" rx="3.5" ry="2"/><ellipse cx="19" cy="17" rx="3" ry="2"/>',
+    mountain: '<path d="M3 20l6-11 4 6 3-4 5 9z"/><path d="M15 5v5"/><path d="M15 5l4 1.5-4 1.5"/>',
+    signpost: '<path d="M12 3v18"/><path d="M12 6h7l2 2-2 2h-7"/><path d="M12 12H5l-2 2 2 2h7"/>',
+  };
+  UI.icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
+
+  // ------------------------------------------------------------------ Bewegung an/aus
+  UI.initMotion = function () {
+    let off = false;
+    try { off = localStorage.getItem("motion") === "off"; } catch { /* privater Modus */ }
+    document.body.classList.toggle("no-motion", off);
+    const slot = document.querySelector(".topbar"); // nicht in .topbar-status: dessen Text wird neu gesetzt
+    if (!slot || document.querySelector(".motion-toggle")) return;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "ghost motion-toggle";
+    const sync = () => {
+      const on = !document.body.classList.contains("no-motion");
+      b.setAttribute("aria-pressed", String(on));
+      b.innerHTML = `${on ? "◉" : "○"} Bewegung ${on ? "an" : "aus"}`;
+      b.title = on ? "Umgebungsbewegung und Eintrittsanimationen ausschalten" : "Bewegung wieder einschalten";
+    };
+    b.onclick = () => {
+      document.body.classList.toggle("no-motion");
+      try { localStorage.setItem("motion", document.body.classList.contains("no-motion") ? "off" : "on"); } catch { /* egal */ }
+      sync();
+    };
+    sync();
+    slot.append(b);
+  };
+
+  /** Gestaffelter Eintritt (Kacheln schweben nacheinander herein). */
+  UI.enter = function (elements, { y = 26, stagger = 0.08 } = {}) {
+    if (UI.reducedMotion() || !root.Motion?.animate) return;
+    [...elements].forEach((el, i) => {
+      root.Motion.animate(el, { opacity: [0, 1], transform: [`translateY(${y}px) scale(.98)`, "translateY(0) scale(1)"] },
+        { duration: 0.7, delay: i * stagger, ease: [0.2, 0.9, 0.2, 1] });
+    });
+  };
+
   // ------------------------------------------------------------------ Bewegung
-  const EASE = [0.2, 0, 0, 1];
-  const DURATION = 0.26; // Sekunden, DESIGN.md: max. 300 ms
+  const EASE = [0.2, 0.9, 0.25, 1];
+  const DURATION = 0.4; // Sekunden, DESIGN.md: federnd, höchstens 450 ms
   function play(el, keyframes) {
     if (UI.reducedMotion()) return Promise.resolve();
     if (root.Motion?.animate) {
@@ -232,6 +293,7 @@
         layer.style.clipPath = animate && lvl === level ? clipOf(this.originRect(lvl)) : "none";
         layer.hidden = false;
         layer.dataset.key = key;
+        if (item.tone) layer.dataset.tone = item.tone; else delete layer.dataset.tone;
         this.body(lvl).innerHTML = "";
         this.level = lvl;
         this.renderCrumbs();
