@@ -765,8 +765,9 @@ function renderFlow(d) {
     links.push({ from: "hub", to: "left", value: left, cls: "rest" });
   }
   $("#flow-sub").textContent = `${periodLabel()} · Einnahmen ${UI.money0(income)} → Ausgaben ${UI.money0(expense)}${saving ? `, gespart ${UI.money0(saving)}` : ""}${left > 0 ? `, übrig ${UI.money0(left)}` : ""}. Kategorie anklicken für die Zusammensetzung.`;
-  Flow.render($("#flow"), { nodes, links }, {
-    label: "Geldfluss: Einnahmen links, Ausgaben und Sparen rechts",
+  Flow.lake($("#flow"), { nodes, links }, {
+    label: "Geldfluss: Einnahmen links münden in den See, Ausgaben und Sparen fließen rechts ab",
+    hubSub: periodLabel(),
     format: (v) => UI.money0(v),
     detail: (x, type, from, to) => {
       if (type === "node") {
@@ -1335,7 +1336,7 @@ function wire() {
   // Theme-Wechsel: Diagramme mit den Farben des neuen Modus neu zeichnen
   const retheme = () => { if (dash.m) { renderStart(); if (zoom.level > 1) zoom.refresh(); } };
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", retheme);
-  new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-scheme"] });
 }
 
 // Neue Dateien aus der Inbox (automatischer Import) erkennen und die Ansicht auffrischen

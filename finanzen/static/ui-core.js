@@ -172,6 +172,30 @@
     };
     sync();
     bar.append(b);
+    bar.append(UI.schemePicker());
+  };
+
+  /** Farbschema (Akzentton + Graustufen), unabhängig von Hell/Dunkel; Standard: Papier & Bronze. */
+  UI.SCHEMES = [["bronze", "Papier & Bronze"], ["tinte", "Tinte"], ["graphit", "Graphit"], ["salbei", "Salbei"]];
+  UI.applyScheme = function (key) {
+    if (!key || key === "bronze" || !UI.SCHEMES.some(([k]) => k === key)) delete document.documentElement.dataset.scheme;
+    else document.documentElement.dataset.scheme = key;
+  };
+  UI.schemePicker = function () {
+    let key = "bronze";
+    try { key = localStorage.getItem("scheme") || "bronze"; } catch { /* privater Modus */ }
+    UI.applyScheme(key);
+    const s = document.createElement("select");
+    s.className = "scheme-select";
+    s.title = "Farbschema";
+    s.setAttribute("aria-label", "Farbschema");
+    s.innerHTML = UI.SCHEMES.map(([k, label]) => `<option value="${k}">${label}</option>`).join("");
+    s.value = UI.SCHEMES.some(([k]) => k === key) ? key : "bronze";
+    s.onchange = () => {
+      try { localStorage.setItem("scheme", s.value); } catch { /* egal */ }
+      UI.applyScheme(s.value);
+    };
+    return s;
   };
 
   UI.initMotion = function () {

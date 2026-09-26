@@ -110,7 +110,7 @@ Streaming, Versicherungen …) und für vier Kategorien ein Beispiel-Budget gese
 
 ## Dashboards
 
-Gestaltet nach **[DESIGN.md](DESIGN.md)** (verbindlich, Stand 5): ein Farbton „Papier & Bronze“ mit warmen Graustufen,
+Gestaltet nach **[DESIGN.md](DESIGN.md)** (verbindlich, Stand 6): wählbares Farbschema (Standard „Papier & Bronze“, dazu Tinte, Graphit, Salbei), Geldfluss als See mit feinen Fäden,
 Rot nur für Warnungen, Schrift Inter, Umschalter Hell/Dunkel/System, Bewegung in allen Teilen, jede Zahl mit Soll-Wert
 und Alltagsäquivalent.
 

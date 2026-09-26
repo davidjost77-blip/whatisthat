@@ -13,13 +13,13 @@ Oberfläche angepasst, nicht die Regel.
 - Arbeitet im Hyperfokus → Fokusmodus blendet alles außer dem gewählten Element aus
 - Braucht klare Soll/Ist-Maßstäbe, keine nackten Zahlen
 
-### Aufbau (Stand 5)
+### Aufbau (Stand 6)
 1. **Startseite**: alles Wichtige auf einer Seite, von oben nach unten nach Wichtigkeit geordnet; im Zentrum der Finanzen steht der bewegte **Geldfluss**
 2. **Vollbild** (Extra, per ⤢): ein Element bildschirmfüllend, Trend + Vergleich
 3. **Tiefe** (Extra): exakte Daten, Tabellen
 
-### Visuelle Regeln (Stand 5, siehe Änderungen am Ende)
-- **Ein Farbton** („Papier & Bronze“) plus warme Graustufen; Rot ist reserviert für Abweichung/Handlungsbedarf und kommt immer mit Symbol + Text
+### Visuelle Regeln (Stand 6, siehe Änderungen am Ende)
+- **Ein Akzentton je Farbschema** (Standard „Papier & Bronze“; wählbar Tinte, Graphit, Salbei) plus passende Graustufen; Rot ist reserviert für Abweichung/Handlungsbedarf und kommt immer mit Symbol + Text
 - Schrift **Inter** (lokal mitgeliefert), Zahlen mit gleich breiten Ziffern
 - Keine Tachos, keine Kreisdiagramme, keine blinkenden oder flackernden Elemente
 - Bewegung in allen Teilen, wo sie etwas erzählt (Eintritt, Füllen, Hochzählen, Zoom); abschaltbar
@@ -96,9 +96,20 @@ Handlungsbedarf.
 - Mehrere Reihen (z. B. ETF-Baukasten): Helligkeitsstufen von Bronze plus direkte Beschriftung, keine zweite Farbe.
 - Positive Aussagen („Ziel erreicht“) erscheinen in `--bronze-ink` mit ✓, nicht in Grün.
 - Darstellung **Hell / Dunkel / System** per Umschalter in der Kopfzeile (gespeichert pro Browser).
+- **Farbschema** per Auswahl in der Kopfzeile, unabhängig von Hell/Dunkel (gespeichert pro Browser, `<html data-scheme>`).
+  Jedes Schema tauscht nur Papier-, Grau- und Akzent-Tokens aus; die Namen bleiben (`--bronze` = Akzent des Schemas).
+  Rot bleibt in allen Schemata den Warnungen vorbehalten.
+
+| Schema | Akzent hell / dunkel | Papier hell / dunkel | Charakter |
+|---|---|---|---|
+| Papier & Bronze (Standard) | `#8a5a24` / `#d1a067` | `#faf8f4` / `#12100d` | warm, papieren |
+| Tinte | `#2f5d8f` / `#7fa9dc` | `#f5f7fa` / `#0e1117` | kühl, sachlich |
+| Graphit | `#4b4b52` / `#c9c9cf` | `#f6f6f5` / `#0f0f10` | reine Graustufen |
+| Salbei | `#4f7351` / `#8fbf8c` | `#f5f7f3` / `#0f120f` | ruhig, natürlich |
 
 ### 6. Verbotene Formen
-- Keine **Tachos** und Halbkreis-Anzeigen, keine **Kreis- und Ringdiagramme**, keine Sankey-Diagramme.
+- Keine **Tachos** und Halbkreis-Anzeigen, keine **Kreis- und Ringdiagramme**, keine Sankey-Diagramme –
+  Ausnahme ist der Geldfluss (§8), auf ausdrücklichen Wunsch.
   Anteile werden als Balken mit Soll-Marke gezeigt.
 - Nichts **blinkt, flackert oder pulsiert im Takt**; keine Bewegung schneller als ein Zyklus pro 3 Sekunden.
 - Keine Zahl ohne Maßstab: Einzelzahlen ohne Soll, Vorzeitraum oder Äquivalent sind nicht erlaubt.
@@ -128,14 +139,22 @@ Bewegung erzählt, sie lenkt nicht ab. Sie steckt in jedem Dashboard-Teil, läuf
 - Zahlen mit `tnum` (gleich breite Ziffern), damit hochzählende Werte und Tabellen nicht springen.
 - Überschriften 700–780, Laufweite −0,03 em; Fließtext 14,5 px / 1,5.
 
-### 8. Geldfluss
-- Bänder proportional zum Betrag; darauf fließen ruhig kleine Lichtpunkte von links nach rechts. Mehr Geld ergibt
-  einen dichteren Strom, die Geschwindigkeit ist überall gleich (ca. 38 px/s). Mit „Bewegung aus“ stehen die Punkte still.
-- Farben: Bänder Bronze (hell), „Sparen & Depot“ Bronze (kräftig), „Übrig“ und „Aus Rücklagen“ Grau,
-  Kategorien über ihrem Soll rot mit ⚠ und Betrag.
-- Überfahren hebt den Weg hervor und zeigt Betrag, Äquivalent und Soll. Klick: Kategorie → Zusammensetzung,
-  Einnahme → Umsätze, Sparen → Sparplan.
-- Beim Laden laufen die Bänder von links nach rechts voll (1,4 s).
+### 8. Geldfluss – „Fäden münden in einen See“ (`lake-flow.js`)
+Entworfen und abgestimmt im Claude-Design-Canvas (Variante „Final“).
+- **See in der Mitte** mit dem verfügbaren Betrag: organisch, etwas runder als ein Ei, weich gezeichnetes Ufer, das
+  sehr langsam „atmet“ (13–17 s je Zyklus). Hell: tief in der Mitte, flach am Rand; dunkel umgekehrt.
+- **Flüsse** aus der Vogelperspektive, ruhig geschwungen: links die Einnahmen, rechts Ausgaben, Sparen und Übrig.
+  Breite wächst mit dem Betrag (gestaucht, damit kleine Posten sichtbar bleiben).
+- Jeder Fluss ist ein **Bündel feiner Fäden** (0,4 px), auf denen ruhig Lichtstriche fließen; die Mitte fließt
+  schneller als der Rand. Zuflüsse entspringen schmal.
+- **Mündung**: Die Fäden laufen über ~100 px weich aus und sind am Ufer kaum noch zu sehen; das Seewasser greift als
+  flacher Trichter in jeden Fluss hinein. Keine harte Kante, kein Faden ragt in den See.
+- **Keine Überschneidungen**: Jeder Fluss bekommt einen eigenen Ufer-Abschnitt; der oberste Zufluss mündet oben,
+  der oberste Abfluss verlässt den See oben.
+- Farben aus dem Farbschema; „Sparen & Depot“ im kräftigen Akzent, „Übrig“ grau, Kategorien über Soll rot mit ⚠.
+- Überfahren hebt den Fluss hervor und zeigt Betrag, Äquivalent und Soll. Klick: Kategorie → Zusammensetzung,
+  Einnahme → Umsätze, Sparen → Sparplan. Mit „Bewegung aus“ stehen Fäden und Ufer still.
+- Die Zusammensetzung einer Kategorie (drei Spalten) zeigt weiterhin das Band-Diagramm aus `flow.js`.
 
 ### 8a. Metaphern in Karten
 Kleine Metaphern bleiben dort, wo sie schneller sind als eine Zahl: **Spur mit Soll-Strich** (Kategorien, Depot),
@@ -154,6 +173,8 @@ Kleine Metaphern bleiben dort, wo sie schneller sind als eine Zahl: **Spur mit S
 
 ## Änderungen
 
+- **Stand 6** (nach Auswahl im Claude-Design-Canvas): Der Geldfluss ist ein See, in den Flüsse aus feinen Fäden
+  münden (§8). Farbschema wählbar: Papier & Bronze (Standard), Tinte, Graphit, Salbei – je hell und dunkel (§5).
 - **Stand 5** (auf Wunsch): Zurück zu klassischen Startseiten, auf denen alles direkt zugänglich ist; im Zentrum der
   Finanzen ein dauerhaft fließender Geldfluss mit Zusammensetzung je Kategorie. Filterleiste für den Zeitraum ist zurück.
   Der Sparplan ist wieder eine durchgehende Seite. Vollbild und Tiefe bleiben als Extra (⤢, Esc).

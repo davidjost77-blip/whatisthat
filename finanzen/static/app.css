@@ -87,6 +87,251 @@
   --aurora-a: rgba(209, 160, 103, 0.08); --aurora-b: rgba(209, 160, 103, 0.04); --aurora-c: rgba(138, 90, 36, 0.05);
 }
 
+/* ---------- Farbschemata (DESIGN.md §5): ein Akzentton je Schema, Rot bleibt Warnungen vorbehalten.
+   Papier & Bronze ist der Standard (:root oben); die übrigen setzen <html data-scheme="…">. ---------- */
+/* Tinte */
+:root[data-scheme="tinte"] {
+  color-scheme: light;
+  --page: #f5f7fa;
+  --surface-1: #fdfdff;
+  --surface-2: #f1f3f7;
+  --text-primary: #161a22;
+  --text-secondary: #4b5263;
+  --text-muted: #6b7285;
+  --axis-muted: #8f96a6;
+  --grid: #e2e6ee;
+  --baseline: #c6cbd6;
+  --border: rgba(22, 26, 34, 0.09);
+  --ink-1: #161a22;
+  --ink-2: #6b7285;
+  --ink-3: #b3b9c6;
+  --ink-4: #e2e6ee;
+  --bronze: #2f5d8f;
+  --bronze-ink: #1f4570;
+  --bronze-soft: #e0e7ef;
+  --signal-bad: #c8323a;
+  --signal-good: #1f4570;
+  --aurora-a: rgba(47, 93, 143, 0.07);
+  --aurora-b: rgba(47, 93, 143, 0.05);
+  --aurora-c: rgba(31, 69, 112, 0.04);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-scheme="tinte"]:not([data-theme="light"]) {
+  color-scheme: dark;
+    --page: #0e1117;
+    --surface-1: #161a22;
+    --surface-2: #1b2029;
+    --text-primary: #eef1f7;
+    --text-secondary: #c2c8d6;
+    --text-muted: #8a92a6;
+    --axis-muted: #6a7284;
+    --grid: #252b37;
+    --baseline: #3b4251;
+    --border: rgba(238, 241, 247, 0.08);
+    --ink-1: #eef1f7;
+    --ink-2: #8a92a6;
+    --ink-3: #4a5263;
+    --ink-4: #252b37;
+    --bronze: #7fa9dc;
+    --bronze-ink: #a9c8ee;
+    --bronze-soft: #273242;
+    --signal-bad: #ff6b70;
+    --signal-good: #a9c8ee;
+    --aurora-a: rgba(127, 169, 220, 0.07);
+    --aurora-b: rgba(127, 169, 220, 0.05);
+    --aurora-c: rgba(169, 200, 238, 0.04);
+}
+}
+
+:root[data-scheme="tinte"][data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0e1117;
+  --surface-1: #161a22;
+  --surface-2: #1b2029;
+  --text-primary: #eef1f7;
+  --text-secondary: #c2c8d6;
+  --text-muted: #8a92a6;
+  --axis-muted: #6a7284;
+  --grid: #252b37;
+  --baseline: #3b4251;
+  --border: rgba(238, 241, 247, 0.08);
+  --ink-1: #eef1f7;
+  --ink-2: #8a92a6;
+  --ink-3: #4a5263;
+  --ink-4: #252b37;
+  --bronze: #7fa9dc;
+  --bronze-ink: #a9c8ee;
+  --bronze-soft: #273242;
+  --signal-bad: #ff6b70;
+  --signal-good: #a9c8ee;
+  --aurora-a: rgba(127, 169, 220, 0.07);
+  --aurora-b: rgba(127, 169, 220, 0.05);
+  --aurora-c: rgba(169, 200, 238, 0.04);
+}
+
+/* Graphit */
+:root[data-scheme="graphit"] {
+  color-scheme: light;
+  --page: #f6f6f5;
+  --surface-1: #ffffff;
+  --surface-2: #f4f4f3;
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-muted: #71717a;
+  --axis-muted: #9a9aa1;
+  --grid: #e6e6e4;
+  --baseline: #d2d2d3;
+  --border: rgba(24, 24, 27, 0.09);
+  --ink-1: #18181b;
+  --ink-2: #71717a;
+  --ink-3: #c4c4c8;
+  --ink-4: #e6e6e4;
+  --bronze: #4b4b52;
+  --bronze-ink: #27272a;
+  --bronze-soft: #e6e6e7;
+  --signal-bad: #c8323a;
+  --signal-good: #27272a;
+  --aurora-a: rgba(75, 75, 82, 0.07);
+  --aurora-b: rgba(75, 75, 82, 0.05);
+  --aurora-c: rgba(39, 39, 42, 0.04);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-scheme="graphit"]:not([data-theme="light"]) {
+  color-scheme: dark;
+    --page: #0f0f10;
+    --surface-1: #18181b;
+    --surface-2: #1e1e22;
+    --text-primary: #f4f4f5;
+    --text-secondary: #c8c8cc;
+    --text-muted: #8e8e96;
+    --axis-muted: #707078;
+    --grid: #2a2a2e;
+    --baseline: #424249;
+    --border: rgba(244, 244, 245, 0.08);
+    --ink-1: #f4f4f5;
+    --ink-2: #8e8e96;
+    --ink-3: #52525b;
+    --ink-4: #2a2a2e;
+    --bronze: #c9c9cf;
+    --bronze-ink: #f4f4f5;
+    --bronze-soft: #38383a;
+    --signal-bad: #ff6b70;
+    --signal-good: #f4f4f5;
+    --aurora-a: rgba(201, 201, 207, 0.07);
+    --aurora-b: rgba(201, 201, 207, 0.05);
+    --aurora-c: rgba(244, 244, 245, 0.04);
+}
+}
+
+:root[data-scheme="graphit"][data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0f0f10;
+  --surface-1: #18181b;
+  --surface-2: #1e1e22;
+  --text-primary: #f4f4f5;
+  --text-secondary: #c8c8cc;
+  --text-muted: #8e8e96;
+  --axis-muted: #707078;
+  --grid: #2a2a2e;
+  --baseline: #424249;
+  --border: rgba(244, 244, 245, 0.08);
+  --ink-1: #f4f4f5;
+  --ink-2: #8e8e96;
+  --ink-3: #52525b;
+  --ink-4: #2a2a2e;
+  --bronze: #c9c9cf;
+  --bronze-ink: #f4f4f5;
+  --bronze-soft: #38383a;
+  --signal-bad: #ff6b70;
+  --signal-good: #f4f4f5;
+  --aurora-a: rgba(201, 201, 207, 0.07);
+  --aurora-b: rgba(201, 201, 207, 0.05);
+  --aurora-c: rgba(244, 244, 245, 0.04);
+}
+
+/* Salbei */
+:root[data-scheme="salbei"] {
+  color-scheme: light;
+  --page: #f5f7f3;
+  --surface-1: #fcfdfa;
+  --surface-2: #f1f4ee;
+  --text-primary: #1a1e19;
+  --text-secondary: #4f574d;
+  --text-muted: #6f786c;
+  --axis-muted: #919a8e;
+  --grid: #e3e8df;
+  --baseline: #c6cdc3;
+  --border: rgba(26, 30, 25, 0.09);
+  --ink-1: #1a1e19;
+  --ink-2: #6f786c;
+  --ink-3: #b3bbb0;
+  --ink-4: #e3e8df;
+  --bronze: #4f7351;
+  --bronze-ink: #365a3a;
+  --bronze-soft: #e4eae2;
+  --signal-bad: #c8323a;
+  --signal-good: #365a3a;
+  --aurora-a: rgba(79, 115, 81, 0.07);
+  --aurora-b: rgba(79, 115, 81, 0.05);
+  --aurora-c: rgba(54, 90, 58, 0.04);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-scheme="salbei"]:not([data-theme="light"]) {
+  color-scheme: dark;
+    --page: #0f120f;
+    --surface-1: #171b17;
+    --surface-2: #1c211c;
+    --text-primary: #eef2ec;
+    --text-secondary: #c3cbc0;
+    --text-muted: #8f998c;
+    --axis-muted: #6e786c;
+    --grid: #262c25;
+    --baseline: #3d463c;
+    --border: rgba(238, 242, 236, 0.08);
+    --ink-1: #eef2ec;
+    --ink-2: #8f998c;
+    --ink-3: #4d574b;
+    --ink-4: #262c25;
+    --bronze: #8fbf8c;
+    --bronze-ink: #b5dbb1;
+    --bronze-soft: #2b382a;
+    --signal-bad: #ff6b70;
+    --signal-good: #b5dbb1;
+    --aurora-a: rgba(143, 191, 140, 0.07);
+    --aurora-b: rgba(143, 191, 140, 0.05);
+    --aurora-c: rgba(181, 219, 177, 0.04);
+}
+}
+
+:root[data-scheme="salbei"][data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0f120f;
+  --surface-1: #171b17;
+  --surface-2: #1c211c;
+  --text-primary: #eef2ec;
+  --text-secondary: #c3cbc0;
+  --text-muted: #8f998c;
+  --axis-muted: #6e786c;
+  --grid: #262c25;
+  --baseline: #3d463c;
+  --border: rgba(238, 242, 236, 0.08);
+  --ink-1: #eef2ec;
+  --ink-2: #8f998c;
+  --ink-3: #4d574b;
+  --ink-4: #262c25;
+  --bronze: #8fbf8c;
+  --bronze-ink: #b5dbb1;
+  --bronze-soft: #2b382a;
+  --signal-bad: #ff6b70;
+  --signal-good: #b5dbb1;
+  --aurora-a: rgba(143, 191, 140, 0.07);
+  --aurora-b: rgba(143, 191, 140, 0.05);
+  --aurora-c: rgba(181, 219, 177, 0.04);
+}
+
 * { box-sizing: border-box; }
 html, body { margin: 0; }
 body {
@@ -577,6 +822,12 @@ dialog[open]::backdrop { animation: fade-in .3s ease-out; }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(14px) scale(.97); } }
 @keyframes fade-in { from { opacity: 0; } }
 .theme-toggle { font-size: 12.5px; padding: 5px 10px; border-radius: 999px; white-space: nowrap; }
+.scheme-select { font: inherit; font-size: 12.5px; color: var(--text-muted); background: transparent; border: 1px solid var(--border);
+  border-radius: 999px; padding: 4px 26px 4px 10px; cursor: pointer; appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 13px) 55%, calc(100% - 9px) 55%; background-size: 4px 4px; background-repeat: no-repeat; }
+.scheme-select:hover, .scheme-select:focus-visible { color: var(--text-primary); background-color: var(--surface-2); }
+.scheme-select option { color: var(--text-primary); background: var(--surface-1); }
 
 /* ======================================================================
    Geldfluss (flow.js): Bänder in Bronze, fließende Lichtpunkte, Rot bei Überschreitung
@@ -661,3 +912,65 @@ a.primary-link:hover { background: var(--bronze-ink); color: var(--on-accent); }
 .flow-leader { stroke: var(--ink-3); stroke-width: 1; fill: none; }
 .flow-name, .flow-value { paint-order: stroke; stroke: color-mix(in srgb, var(--surface-1) 85%, transparent); stroke-width: 4px; stroke-linejoin: round; }
 @media (max-width: 700px) { .flow-svg { max-width: none; } .flow-scroll { -webkit-overflow-scrolling: touch; } }
+
+/* ---------- Geldfluss als See (lake-flow.js, DESIGN.md §6): feine Fäden, weiches, atmendes Ufer.
+   Alle Farben leiten sich aus dem Farbschema ab (Akzent = --bronze). ---------- */
+.lf {
+  --lf-far: color-mix(in srgb, var(--bronze) 62%, var(--surface-1));
+  --lf-mid: color-mix(in srgb, var(--bronze) 78%, var(--surface-1));
+  --lf-near: color-mix(in srgb, var(--bronze) 92%, var(--surface-1));
+  --lk-shallow: color-mix(in srgb, var(--bronze) 30%, var(--surface-1));
+  --lk-mid: color-mix(in srgb, var(--bronze) 62%, var(--surface-1));
+  --lk-deep: color-mix(in srgb, var(--bronze-ink) 88%, #000);
+  --lk-text: #fffdf9; --lk-text-k: rgba(255, 253, 249, .88); --lk-text-s: rgba(255, 253, 249, .8);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .lf {
+    --lf-far: color-mix(in srgb, var(--bronze) 50%, var(--page));
+    --lf-mid: color-mix(in srgb, var(--bronze) 68%, var(--page));
+    --lf-near: color-mix(in srgb, var(--bronze) 85%, var(--page));
+    --lk-shallow: color-mix(in srgb, var(--bronze) 42%, var(--page));
+    --lk-mid: color-mix(in srgb, var(--bronze) 30%, var(--page));
+    --lk-deep: color-mix(in srgb, var(--bronze) 16%, var(--page));
+    --lk-text: var(--text-primary); --lk-text-k: var(--bronze-ink); --lk-text-s: var(--text-secondary);
+  }
+}
+:root[data-theme="dark"] .lf {
+  --lf-far: color-mix(in srgb, var(--bronze) 50%, var(--page));
+  --lf-mid: color-mix(in srgb, var(--bronze) 68%, var(--page));
+  --lf-near: color-mix(in srgb, var(--bronze) 85%, var(--page));
+  --lk-shallow: color-mix(in srgb, var(--bronze) 42%, var(--page));
+  --lk-mid: color-mix(in srgb, var(--bronze) 30%, var(--page));
+  --lk-deep: color-mix(in srgb, var(--bronze) 16%, var(--page));
+  --lk-text: var(--text-primary); --lk-text-k: var(--bronze-ink); --lk-text-s: var(--text-secondary);
+}
+.lf .lf-far { stop-color: var(--lf-far); } .lf .lf-mid { stop-color: var(--lf-mid); } .lf .lf-near { stop-color: var(--lf-near); }
+.lf .lk-deep { stop-color: var(--lk-deep); } .lf .lk-mid { stop-color: var(--lk-mid); } .lf .lk-shallow { stop-color: var(--lk-shallow); }
+.lf .lf-veil { fill: var(--bronze); opacity: .06; }
+.lf .lf-veil.bad { fill: var(--signal-bad); } .lf .lf-veil.rest { fill: var(--ink-3); opacity: .12; }
+.lf .lf-est { fill: var(--lk-shallow); opacity: .55; }
+.lf .lf-halo { fill: var(--lk-shallow); opacity: .45; }
+.lf .lf-strand, .lf .lf-thread { fill: none; stroke-linecap: round; }
+.lf .lf-strand { opacity: .55; }
+.lf .lf-thread { animation: lf-thread linear infinite; }
+@keyframes lf-thread { to { stroke-dashoffset: -240; } }
+.lf .lf-bundle.save path { stroke: var(--bronze-ink); }
+.lf .lf-bundle.rest path { stroke: var(--ink-3); }
+.lf .lf-bundle.bad path { stroke: var(--signal-bad); }
+.lf .lf-k { font: 700 11.5px var(--font); letter-spacing: .1em; text-transform: uppercase; fill: var(--lk-text-k); }
+.lf .lf-v { font: 750 27px var(--font); letter-spacing: -.02em; font-variant-numeric: tabular-nums; fill: var(--lk-text); }
+.lf .lf-s { font: 400 12px var(--font); fill: var(--lk-text-s); }
+.lf .lf-mouth { fill: var(--bronze); } .lf .lf-mouth.save { fill: var(--bronze-ink); } .lf .lf-mouth.rest { fill: var(--ink-3); } .lf .lf-mouth.bad { fill: var(--signal-bad); }
+.lf .lf-warn { font: 650 12px var(--font); fill: var(--signal-bad); }
+.lf .lf-hit { fill: none; stroke: transparent; }
+.lf .lf-labelhit { fill: transparent; }
+.lf .clickable { cursor: pointer; outline: none; }
+.lf .lf-label.clickable:hover .flow-name, .lf .lf-label.clickable:focus-visible .flow-name, .lf .lf-label.hi .flow-name { fill: var(--bronze-ink); }
+.lf .lf-label.clickable:hover .flow-name, .lf .lf-label.clickable:focus-visible .flow-name { text-decoration: underline; }
+.lf .lf-veil, .lf .lf-bundle, .lf .lf-label { transition: opacity .3s var(--ease-out); }
+.lf.focusing .lf-bundle:not(.hi), .lf.focusing .lf-label:not(.hi) { opacity: .28; }
+.lf.focusing .lf-veil.hi { opacity: .14; }
+.lf { animation: lf-in .9s var(--ease-out) both; }
+@keyframes lf-in { from { opacity: 0; } to { opacity: 1; } }
+body.no-motion .lf .lf-thread, body.no-motion .lf { animation: none; }
+@media (prefers-reduced-motion: reduce) { .lf .lf-thread, .lf { animation: none; } }

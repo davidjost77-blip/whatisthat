@@ -1117,7 +1117,7 @@ function wire() {
 
   const retheme = () => { renderBlick(); if (zoom.level > 1) zoom.refresh(); };
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", retheme);
-  new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-scheme"] });
 }
 
 async function pollQuote() {
