@@ -869,7 +869,7 @@ function renderFlow(d) {
     <span><i style="background:var(--flow-out)"></i>steuerbar</span>
     ${carry ? `<span><i style="background:${carry.value >= 0 ? "var(--carry-pos)" : "var(--carry-neg)"}"></i>Übertrag</span>` : ""}
     <span class="muted">See: ${plan.progress < 1 ? "erwartetes Ergebnis zum Ende" : "Ergebnis"}${carry ? " inkl. Übertrag" : ""} – Einnahmenfarbe = im Plus, je näher an null desto röter, Ausgabenfarbe = im Minus</span>`;
-  Flow.lake($("#flow"), { nodes }, {
+  const lakeCtl = Flow.lake($("#flow"), { nodes }, {
     label: "Geldfluss: Einnahmen links münden in den See, Ausgaben und Sparen fließen rechts ab",
     format: (v) => UI.money0(v),
     lake,
@@ -894,6 +894,34 @@ function renderFlow(d) {
       zoom.open("zusammensetzung", 2, el);
     },
   });
+  kickNewBookings(lakeCtl, nodes, f);
+}
+
+/** Neue Buchungen seit dem letzten Blick (Bank-Sync, Import) stoßen den See dort an, wo ihr Fluss mündet. */
+let lakeSeenMem = null;
+async function kickNewBookings(ctl, nodes, f) {
+  const max = state.status?.max_id;
+  if (!ctl || !max) return;
+  let seen = lakeSeenMem;
+  try { seen = +localStorage.getItem("lakeSeen") || seen; localStorage.setItem("lakeSeen", String(max)); } catch { /* privater Modus */ }
+  lakeSeenMem = max;
+  if (!seen || seen >= max) return;                  // erster Besuch oder nichts Neues
+  const r = dash.period.range;
+  let res;
+  try { res = await api("GET", `/api/transactions?${filterQuery({ since: seen, from: r.from, to: r.to, limit: 50 })}`); } catch { return; }
+  const ids = new Set(nodes.map((n) => n.id));
+  const sums = new Map();
+  for (const tx of res.items) {
+    const cat = state.cats.get(tx.category_id);
+    const top = cat ? cat.parent_id || cat.id : 0;
+    let id;
+    if (cat?.kind === "transfer") id = "save";
+    else if (tx.amount > 0) { const i = f.sources.findIndex((x) => x.id === top); id = i >= 0 ? `in${i}` : null; }
+    else id = ids.has(`c${top}`) ? `c${top}` : "other";
+    if (id && ids.has(id)) sums.set(id, (sums.get(id) || 0) + Math.abs(eurOf(tx.amount)));
+  }
+  [...sums].sort((a, b) => b[1] - a[1]).slice(0, 6)
+    .forEach(([id, v], i) => setTimeout(() => ctl.kick(id, v), 700 + i * 420));
 }
 
 // 3 · Budgets & Soll je Kategorie

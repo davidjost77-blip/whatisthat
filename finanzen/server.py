@@ -95,7 +95,7 @@ class App:
 
     # ------------------------------------------------------------------ Status
     def status(self, conn, req):
-        bounds = conn.execute("SELECT MIN(date), MAX(date), COUNT(*) FROM transactions").fetchone()
+        bounds = conn.execute("SELECT MIN(date), MAX(date), COUNT(*), COALESCE(MAX(id), 0) FROM transactions").fetchone()
         accounts = [
             {"account": r["account"], "count": r["n"], "last": r["last"]}
             for r in conn.execute(
@@ -116,6 +116,7 @@ class App:
             "min": bounds[0],
             "max": bounds[1],
             "count": bounds[2],
+            "max_id": bounds[3],          # neue Buchungen seit dem letzten Besuch erkennen (See stößt an)
             "accounts": accounts,
             "inbox": str(Path(self.inbox).resolve()) if self.inbox else None,
             "inbox_results": self.watcher.last_results if self.watcher else [],
@@ -241,6 +242,9 @@ class App:
         if q.get("q"):
             where.append("(counterparty LIKE ? OR purpose LIKE ? OR booking_text LIKE ? OR note LIKE ?)")
             params += [f"%{q['q']}%"] * 4
+        if q.get("since"):                                  # nur Buchungen, die nach dieser id hinzukamen
+            where.append("id > ?")
+            params.append(int(q["since"]))
         if q.get("direction") == "in":
             where.append("amount > 0")
         elif q.get("direction") == "out":

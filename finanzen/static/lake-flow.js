@@ -1,7 +1,7 @@
 /* Geldfluss als See (DESIGN.md §6): Zuflüsse links münden in einen See in der Mitte,
    Abflüsse verlassen ihn nach rechts. Jeder Fluss ist ein Bündel feiner, parallel fließender
    Fäden; kurz vor dem Ufer laufen die Fäden weich aus, der See greift als Trichter in den
-   Fluss hinein. Das Ufer ist weich gezeichnet und „atmet“ sehr langsam. Keine Abhängigkeiten. */
+   Fluss hinein. Das Ufer ist weich gezeichnet, atmet langsam und schwingt wie ein Wassertropfen, wo es gestört wird. Keine Abhängigkeiten. */
 "use strict";
 (function (root) {
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -20,6 +20,57 @@
   const REACH = 42;      // wie weit das Seewasser in den Fluss greift
   const STOP = 44;       // wo die Fäden auslaufen (Abstand zum Ufer)
   const PATTERNS = ["90 14 40 22 50 24", "60 18 110 52", "130 20 30 60", "44 12 70 30 64 20", "100 40 60 40"]; // je 240 lang
+
+  // ---------- Tropfen-Physik: Das Ufer schwingt wie ein Wassertropfen (Stand 9, als Simulation abgestimmt).
+  // Auslenkung = Summe von Moden n = 2…NMAX (n = 0 fehlt → Volumen bleibt gleich, n = 1 fehlt → der See bleibt am Platz).
+  // Frequenz nach Rayleigh (ω² ∝ n(n−1)(n+2)), Dämpfung nach Lamb (∝ (n−1)(2n+1)): feine Dellen verschwinden sofort,
+  // übrig bleibt ein ruhiges Wabbeln. Der Zustand überdauert das Neuzeichnen (Live-Aktualisierung).
+  const NMAX = 12;
+  const DROP = { period: 1.8, visc: 0.2, limit: 22 };
+  const dA = new Float64Array(NMAX + 1), dB = new Float64Array(NMAX + 1), vA = new Float64Array(NMAX + 1), vB = new Float64Array(NMAX + 1);
+  const omega = (n) => (2 * Math.PI / DROP.period) * Math.sqrt((n * (n - 1) * (n + 2)) / 8);
+  const gamma = (n) => DROP.visc * ((n - 1) * (2 * n + 1)) / 5;
+  /** Örtlicher Stoß am Winkel th (Bogenmaß): Gauß-förmige Ufergeschwindigkeit mit Spitze v px/s und Breite sig. */
+  function kickAt(th, v, sig = 0.28) {
+    let peak = 0;
+    const c = [];
+    for (let n = 2; n <= NMAX; n++) { c[n] = Math.exp(-((n * sig) ** 2) / 2); peak += c[n]; }
+    for (let n = 2; n <= NMAX; n++) { vA[n] += (v * c[n] / peak) * Math.cos(n * th); vB[n] += (v * c[n] / peak) * Math.sin(n * th); }
+  }
+  function stepDrop(dt) {
+    const sub = Math.max(1, Math.ceil(dt * 480)), h = dt / sub;
+    for (let k = 0; k < sub; k++) {
+      for (let n = 2; n <= NMAX; n++) {
+        const w2 = omega(n) ** 2, g2 = 2 * gamma(n);
+        vA[n] += (-w2 * dA[n] - g2 * vA[n]) * h; dA[n] += vA[n] * h;
+        vB[n] += (-w2 * dB[n] - g2 * vB[n]) * h; dB[n] += vB[n] * h;
+      }
+    }
+  }
+  function dropAt(th) {
+    let s = 0;
+    for (let n = 2; n <= NMAX; n++) s += dA[n] * Math.cos(n * th) + dB[n] * Math.sin(n * th);
+    return DROP.limit * Math.tanh(s / DROP.limit);                     // weich begrenzt: der See zerreißt nie
+  }
+  const dropEnergy = () => { let e = 0; for (let n = 2; n <= NMAX; n++) e += vA[n] ** 2 + vB[n] ** 2 + omega(n) ** 2 * (dA[n] ** 2 + dB[n] ** 2); return e; };
+  const motionOff = () => root.UI?.reducedMotion?.() ?? matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let active = null, raf = 0, last = 0, t0 = 0, frameNo = 0, nextBreath = 0;
+  function loop(now) {
+    raf = 0;
+    if (!active || !active.svg.isConnected || document.hidden) return;   // neu gestartet durch lake() bzw. Sichtbarkeit
+    if (motionOff()) { active.draw(null, 0); setTimeout(startLoop, 1500); return; }
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    // lebendig: alle paar Sekunden ein kaum sichtbarer Hauch an zufälliger Stelle
+    if (now > nextBreath) { kickAt(Math.random() * 2 * Math.PI, (Math.random() < 0.5 ? -1 : 1) * (7 + Math.random() * 9), 0.5); nextBreath = now + 3500 + Math.random() * 5000; }
+    stepDrop(dt);
+    frameNo++;
+    // ruhiger See: seltener zeichnen (das Atmen ist langsam), bewegter See: jedes Bild
+    if (dropEnergy() > 40 || frameNo % 4 === 0) active.draw(dropAt, ((now - t0) / 13000) % 1);
+    raf = requestAnimationFrame(loop);
+  }
+  function startLoop() { if (!raf && active) { last = performance.now(); t0 ||= last; raf = requestAnimationFrame(loop); } }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) startLoop(); });
 
   function rng(seed) {
     let s = (seed >>> 0) || 1;
@@ -91,7 +142,7 @@
     const reduced = root.UI?.reducedMotion?.() ?? matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     // ---------- Ufer: organisch, etwas runder als ein Ei, Ausbuchtung zu den Mündungen
-    function shore(grow = 0, ph = 0, n = 96) {
+    function shore(grow = 0, ph = 0, n = 96, disp = null) {
       const lobe = (a, c, sig, amp) => { const d = Math.atan2(Math.sin(a - rad(c)), Math.cos(a - rad(c))); return amp * Math.exp(-((d / sig) ** 2)); };
       const P = [];
       for (let i = 0; i < n; i++) {
@@ -99,7 +150,8 @@
         const k = 1 + 0.4 * (0.03 * Math.sin(3 * a + 0.8) + 0.02 * Math.sin(5 * a + 2.1))
           + 0.011 * Math.sin(4 * a + ph * 2 * Math.PI) + 0.007 * Math.sin(7 * a - ph * 2 * Math.PI);
         const bump = 0.45 * s * (lobe(a, 185, 0.32, 20) + lobe(a, 0, 0.55, 16));
-        P.push([CX + ((RX + grow) * k + bump) * Math.cos(a), CY + ((RY + grow) * k + bump * 0.6) * Math.sin(a)]);
+        const dd = disp ? disp(a) : 0;
+        P.push([CX + ((RX + grow) * k + bump + dd) * Math.cos(a), CY + ((RY + grow) * k + bump * 0.6 + dd * (RY / RX)) * Math.sin(a)]);
       }
       let d = `M${f1(P[0][0])},${f1(P[0][1])}`;
       for (let i = 0; i < n; i++) {
@@ -108,7 +160,8 @@
       }
       return d + " Z";
     }
-    const breathe = (grow, dur) => reduced ? "" :
+    const phys = opts.physics !== false;
+    const breathe = (grow, dur) => reduced || phys ? "" :
       `<animate attributeName="d" dur="${dur}s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.25;0.5;0.75;1" keySplines="${Array(4).fill("0.45 0 0.55 1").join(";")}" values="${[0, 0.25, 0.5, 0.75, 1].map((p) => shore(grow, p)).join(";")}"/>`;
 
     // ---------- Tore am Ufer: jeder Fluss bekommt einen eigenen Abschnitt → keine Überschneidungen
@@ -139,11 +192,11 @@
     const rivers = [];
     srcs.forEach((n, i) => {
       const g = river([xL, srcY[i]], rim(inAng[i]), width(n.value), i + 1, { mouthEnd: true, taperStart: true, amp: AMP * (i === 0 ? 9 : 12) * s });
-      rivers.push({ n, g, dir: "in", y: srcY[i] });
+      rivers.push({ n, g, dir: "in", y: srcY[i], ang: inAng[i] });
     });
     dsts.forEach((n, i) => {
       const g = river(rim(outAng[i]), [xR, dstY[i]], width(n.value), i + 3, { mouthStart: true, amp: AMP * (6 + (i % 3) * 5) * s });
-      rivers.push({ n, g, dir: "out", y: dstY[i] });
+      rivers.push({ n, g, dir: "out", y: dstY[i], ang: outAng[i] });
     });
 
     // ---------- Fäden
@@ -202,6 +255,7 @@
       <filter id="${id}b1" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="34"/></filter>
       <filter id="${id}b2" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="24"/></filter>
       <filter id="${id}b3" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="2"/></filter>
+      <filter id="${id}gl" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="7"/></filter>
       <mask id="${id}stop" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#fff"/><path d="${shore(STOP)}" fill="#000" filter="url(#${id}b1)"/></mask>
       <mask id="${id}est" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><path d="${shore(REACH)}" fill="#fff" filter="url(#${id}b2)"/></mask>
     </defs>`;
@@ -209,6 +263,7 @@
       <path class="lf-halo" d="${shore(8)}" filter="url(#${id}bh)" style="fill:${lk.center}">${breathe(8, 17)}</path>
       <path class="lf-water" d="${shore(0)}" fill="url(#${id}lr)" filter="url(#${id}bf)">${breathe(0, 13)}</path>
       <path class="lf-depth" d="${shore(-6)}" fill="url(#${id}depth)" filter="url(#${id}bf)">${breathe(-6, 13)}</path>
+      ${phys ? `<ellipse class="lf-gloss" filter="url(#${id}gl)" cx="${f1(CX - RX * 0.42)}" cy="${f1(CY - RY * 0.5)}" rx="${f1(RX * 0.28)}" ry="${f1(RY * 0.11)}" transform="rotate(-28 ${f1(CX - RX * 0.42)} ${f1(CY - RY * 0.5)})"/>` : ""}
       ${(opts.hubLines || [{ cls: "lf-k", text: hub.name }, { cls: "lf-v", text: fmt(hub.value) }, ...(opts.hubSub ? [{ cls: "lf-s", text: opts.hubSub }] : [])])
         .map((l, i, all) => `<text x="${CX}" y="${f1(CY + (i - (all.length - 1) / 2) * 21 + (l.cls === "lf-v" ? 8 : 4))}" class="${l.cls}" text-anchor="middle">${esc(l.text)}</text>`).join("")}</g>`;
 
@@ -249,6 +304,55 @@
     svg.addEventListener("click", (e) => open(e.target));
     svg.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && e.target.closest(".lf-label.clickable")) { e.preventDefault(); open(e.target); } });
     svg.querySelectorAll(".lf-hit, .lf-label").forEach((el) => { const n = nodeOf(el); if (n?.click) el.classList.add("clickable"); });
+
+    // ---------- Tropfen: Ufer pro Bild aus der Physik zeichnen; Maus und Klick stören es dort, wo sie es treffen
+    const angOf = new Map(rivers.map((r) => [String(r.n.id), { th: rad(r.ang), dir: r.dir }]));
+    const ctl = {
+      /** Neue Buchung: stößt das Ufer an der Mündung ihres Flusses an – Zufluss nach außen, Abfluss nach innen. */
+      kick(nodeId, amount) {
+        const r = angOf.get(String(nodeId));
+        if (!r || !phys) return;
+        const rel = Math.sqrt(clamp(Math.abs(amount) / Math.max(1, hub.value), 0, 1));
+        kickAt(r.th, (r.dir === "in" ? 1 : -1) * (50 + 170 * rel), 0.22 + 0.1 * rel);
+        svg.querySelectorAll(`.lf-bundle[data-id="${CSS.escape(String(nodeId))}"]`).forEach((el) => { el.classList.add("pulse"); setTimeout(() => el.classList.remove("pulse"), 900); });
+        startLoop();
+      },
+    };
+    if (!phys) return ctl;
+    const halo = svg.querySelector(".lf-halo"), water = svg.querySelector(".lf-water"), depth = svg.querySelector(".lf-depth"), gloss = svg.querySelector(".lf-gloss");
+    const gx = CX - RX * 0.42, gy = CY - RY * 0.5;
+    active = {
+      svg,
+      draw(disp, ph) {
+        halo.setAttribute("d", shore(8, ph, 72, disp));
+        water.setAttribute("d", shore(0, ph, 96, disp));
+        depth.setAttribute("d", shore(-6, ph, 72, disp));
+        if (disp) { gloss.setAttribute("cx", f1(gx + dA[2] * 0.4)); gloss.setAttribute("cy", f1(gy + dB[2] * 0.3)); gloss.setAttribute("rx", f1(RX * 0.28 + dA[2] * 0.2)); }
+      },
+    };
+    const local = (e) => { const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; return p.matrixTransform(svg.getScreenCTM().inverse()); };
+    const polar = (p) => { const dx = p.x - CX, dy = (p.y - CY) * (RX / RY); return { th: Math.atan2(dy, dx), rho: Math.hypot(dx, dy) }; };
+    let prev = null;
+    svg.addEventListener("pointermove", (e) => {
+      const p = polar(local(e)), now = performance.now();
+      if (prev && !motionOff()) {
+        const dt = Math.max(0.008, (now - prev.t) / 1000);
+        const near = Math.exp(-(((p.rho - (RX * 1.03 + dropAt(p.th))) / 26) ** 2));    // wirkt nur am Ufer
+        let dth = p.th - prev.p.th; dth = Math.atan2(Math.sin(dth), Math.cos(dth));
+        const push = (p.rho - prev.p.rho) / dt * 0.5 + Math.abs(dth * p.rho / dt) * 0.06;  // quer zum Ufer schieben, entlang leicht mitziehen
+        if (near > 0.05) { kickAt(p.th, near * push * Math.min(dt * 12, 1), 0.2); startLoop(); }
+      }
+      prev = { p, t: now };
+    });
+    svg.addEventListener("pointerleave", () => (prev = null));
+    svg.addEventListener("click", (e) => {
+      if (!e.target.closest(".lf-lake") || motionOff()) return;
+      const p = polar(local(e));
+      kickAt(p.th, 90 * (0.4 + 0.6 * Math.min(1, p.rho / RX)), 0.45);             // Tropfen fällt hinein, die Welle erreicht das Ufer
+      startLoop();
+    });
+    startLoop();
+    return ctl;
   }
 
   /**

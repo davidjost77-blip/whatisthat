@@ -161,6 +161,14 @@ Entworfen und abgestimmt im Claude-Design-Canvas (Variante „Final“).
   Plan-Tempo für die restlichen Tage und noch nicht ausgeführte Sparplan-Raten. Deutlich im Plus = Einnahmenfarbe;
   je näher an null, desto mehr nähert sich die Mitte der Ausgabenfarbe; im Minus klar Ausgabenfarbe (volle Stärke bei
   15 % des Einkommens). Die überwiegende Seite nimmt mehr vom See ein. Der Abstand zum anteiligen Plan steht als Text.
+- **Tropfen-Physik** (Stand 9): Das Ufer schwingt wie ein Wassertropfen – als Summe von Schwingungsmoden 2–12
+  (Frequenz nach Rayleigh, Dämpfung nach Lamb; Grundschwingung 1,8 s, wasserartig). Feine Dellen verschwinden sofort,
+  übrig bleibt ein ruhiges Wabbeln; das Volumen bleibt gleich, der See bleibt am Platz, die Auslenkung ist auf 22 px
+  begrenzt. Gestört wird er nur durch die **Maus** (am Ufer quer schieben; Klick in den See = Tropfen) und **neue
+  Buchungen** seit dem letzten Blick (Bank-Sync, Import): Sie stoßen das Ufer an der Mündung ihres Flusses an –
+  Zufluss nach außen, Abfluss nach innen, stärker je größer der Betrag – und der Fluss leuchtet kurz auf. Sonst nur
+  langsames Atmen und alle paar Sekunden ein kaum sichtbarer Hauch, damit er lebendig wirkt. Dezentes Glanzlicht.
+  Bei „Bewegung aus“ bzw. reduzierter Bewegung steht der See still.
 - **Rücklagen (Übertrag)** schaltbar: Was im Vergleichszeitraum nach Ausgaben und Sparen übrig blieb, fließt als
   blauer Strom zu („Übertrag aus August“); ein Minus fließt als roter Strom ab („Ausgleich Minus aus August“) – immer
   blau/rot, unabhängig vom Farbpaar. Ohne vollständige Daten im Vergleichszeitraum kein Übertrag (mit Hinweis).
@@ -191,6 +199,8 @@ Kleine Metaphern bleiben dort, wo sie schneller sind als eine Zahl: **Spur mit S
 
 ## Änderungen
 
+- **Stand 9** (nach Simulation, auf Wunsch): Der See hat die Physik eines Wassertropfens; Maus und neue Buchungen
+  bringen ihn dort zum Wabbeln, wo sie ihn treffen (§8).
 - **Stand 8** (nach Entwurf, abgenommen): Geldfluss mit Einnahmen-/Ausgabenfarbe (Farbpaar wählbar), See gefärbt
   nach dem erwarteten Ergebnis zum Ende (inkl. Übertrag), Rücklagen-Schalter (Übertrag aus dem Vergleichszeitraum), steuerbare Kategorien im tiefen
   Ton, Warnungen erst ab 100 €, Unterdashboard je Kategorie mit Vergleich, Jahresvergleich mit gleichem Zeitraum im

@@ -172,7 +172,9 @@ Die Startseite zeigt alles auf einen Blick, geordnet nach Wichtigkeit, und folgt
    „Übrig“ in der Ausgabenfarbe; steuerbare Kategorien im tieferen Ton. Der See zeigt rein, raus und die Differenz und
    färbt sich nach dem erwarteten Ergebnis zum Monatsende: blau bei klarem Plus, je näher an null desto röter, rot im Minus. Der Schalter **Rücklagen** holt
    den Übertrag aus dem Vergleichszeitraum dazu – ein Plus fließt blau zu, ein Minus rot ab. Das **Farbpaar** (Blau/Rot,
-   Petrol/Koralle, Salbei/Terrakotta) wählst du im Geldfluss. Rot gewarnt wird nur ab 100 € Kategoriesumme.
+   Petrol/Koralle, Salbei/Terrakotta) wählst du im Geldfluss. Rot gewarnt wird nur ab 100 € Kategoriesumme. Der See verhält sich wie
+   ein Wassertropfen: Fährst du mit der Maus übers Ufer oder klickst hinein, wabbelt er an dieser Stelle; neue
+   Buchungen seit deinem letzten Blick stoßen ihn dort an, wo ihr Fluss mündet.
    **Klick auf eine Kategorie** öffnet ihr Unterdashboard: Unterkategorien gegen den Vergleichszeitraum (Vormonat;
    beim laufenden Jahr derselbe Zeitraum im Vorjahr).
 3. **Kategorien gegen Soll** (Budget bzw. Ø der letzten 6 Monate) und **Depot & Sparplan**
